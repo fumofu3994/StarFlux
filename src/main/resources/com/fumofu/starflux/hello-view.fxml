@@ -3,88 +3,179 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
-<VBox spacing="22.0" style="-fx-background-color: #111318;" xmlns:fx="http://javafx.com/fxml"
+<HBox style="-fx-background-color: #111318;" xmlns:fx="http://javafx.com/fxml"
       fx:controller="com.fumofu.starflux.LauncherController">
-    <padding>
-        <Insets bottom="28.0" left="34.0" right="34.0" top="28.0"/>
-    </padding>
-    <HBox alignment="CENTER_LEFT" spacing="14.0">
-        <VBox spacing="3.0">
-            <Label text="STARFLUX" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #a78bfa;"/>
-            <Label text="Minecraft Launcher" style="-fx-font-size: 23px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+    <VBox prefWidth="205.0" spacing="24.0" style="-fx-background-color: #17191f;">
+        <padding>
+            <Insets bottom="24.0" left="18.0" right="18.0" top="28.0"/>
+        </padding>
+        <VBox spacing="4.0">
+            <Label text="STARFLUX" style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #a78bfa;"/>
+            <Label text="MC Launcher" style="-fx-font-size: 12px; -fx-text-fill: #8b8d98;"/>
         </VBox>
-        <HBox HBox.hgrow="ALWAYS"/>
-        <VBox alignment="CENTER_RIGHT" spacing="5.0">
-            <Label text="当前账号" style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
-            <HBox alignment="CENTER_RIGHT" spacing="8.0">
-                <ComboBox fx:id="accountComboBox" prefWidth="150.0" promptText="选择离线账号"/>
-                <Button text="添加账号" onAction="#onAddAccountClick"
-                        style="-fx-background-color: #292b35; -fx-text-fill: #e5e7eb;"/>
-                <Button text="管理" onAction="#onManageAccountsClick"
-                        style="-fx-background-color: transparent; -fx-text-fill: #a78bfa;"/>
+        <VBox spacing="8.0">
+            <Button fx:id="playNavButton" text="  启动游戏" maxWidth="Infinity"
+                    onAction="#showPlayPage" style="-fx-background-radius: 8; -fx-alignment: CENTER_LEFT;"/>
+            <Button fx:id="downloadNavButton" text="  下载游戏" maxWidth="Infinity"
+                    onAction="#showDownloadPage" style="-fx-background-radius: 8; -fx-alignment: CENTER_LEFT;"/>
+            <Button fx:id="settingsNavButton" text="  设置" maxWidth="Infinity"
+                    onAction="#showSettingsPage" style="-fx-background-radius: 8; -fx-alignment: CENTER_LEFT;"/>
+        </VBox>
+        <Region VBox.vgrow="ALWAYS"/>
+        <Label text="StarFlux MC Launcher" style="-fx-font-size: 10px; -fx-text-fill: #62646e;"/>
+    </VBox>
+
+    <VBox spacing="18.0" HBox.hgrow="ALWAYS">
+        <padding>
+            <Insets bottom="24.0" left="30.0" right="30.0" top="26.0"/>
+        </padding>
+        <StackPane fx:id="pageContainer" VBox.vgrow="ALWAYS">
+            <VBox fx:id="playPage" spacing="20.0">
+                <VBox spacing="6.0">
+                    <Label text="启动游戏" style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="选择已安装的游戏版本，开始你的冒险。" style="-fx-font-size: 13px; -fx-text-fill: #9ca3af;"/>
+                </VBox>
+                <VBox spacing="14.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="24.0" left="24.0" right="24.0" top="24.0"/>
+                    </padding>
+                    <HBox alignment="CENTER_LEFT" spacing="8.0">
+                        <Label text="已安装版本" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="installedProfilesLabel" text="0 个已安装版本"
+                               style="-fx-font-size: 11px; -fx-text-fill: #8b8d98;"/>
+                        <Button text="刷新" onAction="#onRefreshInstalledProfilesClick"
+                                style="-fx-background-color: transparent; -fx-text-fill: #c4b5fd;"/>
+                        <Button fx:id="deleteProfileButton" text="删除所选版本" onAction="#onDeleteInstalledProfileClick"
+                                disable="true"
+                                style="-fx-background-color: #38252b; -fx-background-radius: 6; -fx-text-fill: #fca5a5;"/>
+                    </HBox>
+                    <ListView fx:id="profileListView" prefHeight="210.0">
+                        <placeholder>
+                            <Label text="当前游戏目录没有可启动的版本。到“下载游戏”安装 Minecraft。"
+                                   wrapText="true" style="-fx-text-fill: #8b8d98;"/>
+                        </placeholder>
+                    </ListView>
+                    <Label text="离线账号" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
+                    <ComboBox fx:id="accountComboBox" maxWidth="Infinity" promptText="请在设置中添加离线账号"/>
+                    <Button fx:id="launchButton" text="启动游戏" onAction="#onLaunchClick" disable="true"
+                            maxWidth="Infinity" prefHeight="48.0"
+                            style="-fx-background-color: #8b5cf6; -fx-background-radius: 8; -fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold;"/>
+                </VBox>
+                <VBox spacing="8.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 12;">
+                    <padding>
+                        <Insets bottom="18.0" left="20.0" right="20.0" top="18.0"/>
+                    </padding>
+                    <Label text="还没有游戏？" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #e5e7eb;"/>
+                    <Label text="前往“下载游戏”安装 Minecraft，或安装模组加载器。" wrapText="true"
+                           style="-fx-font-size: 12px; -fx-text-fill: #9ca3af;"/>
+                    <Button text="前往下载游戏" onAction="#showDownloadPage"
+                            style="-fx-background-color: transparent; -fx-text-fill: #c4b5fd; -fx-padding: 4 0 0 0;"/>
+                </VBox>
+            </VBox>
+
+            <VBox fx:id="downloadPage" spacing="20.0" visible="false" managed="false">
+                <VBox spacing="6.0">
+                    <Label text="下载游戏" style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="安装原版 Minecraft、模组加载器，或获取整合包。" style="-fx-font-size: 13px; -fx-text-fill: #9ca3af;"/>
+                </VBox>
+                <VBox spacing="14.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="22.0" left="24.0" right="24.0" top="22.0"/>
+                    </padding>
+                    <Label text="安装游戏本体" style="-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="选择 Minecraft 版本和下载源，安装官方游戏文件。" style="-fx-font-size: 12px; -fx-text-fill: #9ca3af;"/>
+                    <HBox spacing="12.0">
+                        <VBox spacing="7.0" HBox.hgrow="ALWAYS">
+                            <Label text="Minecraft 版本" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
+                            <ComboBox fx:id="versionComboBox" maxWidth="Infinity" promptText="选择 Minecraft 版本"/>
+                        </VBox>
+                    </HBox>
+                    <HBox alignment="CENTER_LEFT" spacing="10.0">
+                        <Button fx:id="installButton" text="安装所选版本" onAction="#onInstallClick" disable="true"
+                                prefWidth="145.0" prefHeight="40.0"
+                                style="-fx-background-color: #8b5cf6; -fx-background-radius: 8; -fx-text-fill: white; -fx-font-weight: bold;"/>
+                        <MenuButton text="模组加载器" prefHeight="40.0"
+                                    style="-fx-background-color: #292b35; -fx-background-radius: 8; -fx-text-fill: #e5e7eb;">
+                            <items>
+                                <MenuItem text="安装 Fabric / Forge / NeoForge / Quilt…" onAction="#onLoaderMenuClick"/>
+                            </items>
+                        </MenuButton>
+                    </HBox>
+                </VBox>
+
+                <VBox spacing="10.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="22.0" left="24.0" right="24.0" top="22.0"/>
+                    </padding>
+                    <Label text="整合包" style="-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="浏览并安装 Modrinth 或 CurseForge 整合包。" style="-fx-font-size: 12px; -fx-text-fill: #9ca3af;"/>
+                    <Button text="整合包下载" onAction="#onModpackClick" prefWidth="145.0" prefHeight="40.0"
+                            style="-fx-background-color: #292b35; -fx-background-radius: 8; -fx-text-fill: #c4b5fd;"/>
+                </VBox>
+            </VBox>
+
+            <VBox fx:id="settingsPage" spacing="20.0" visible="false" managed="false">
+                <VBox spacing="6.0">
+                    <Label text="设置" style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="管理账号、下载源和游戏文件位置。" style="-fx-font-size: 13px; -fx-text-fill: #9ca3af;"/>
+                </VBox>
+                <VBox spacing="12.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="20.0" left="22.0" right="22.0" top="20.0"/>
+                    </padding>
+                    <Label text="离线账号" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="管理本地离线昵称。离线账号无法登录需要正版验证的服务器。" wrapText="true"
+                           style="-fx-font-size: 12px; -fx-text-fill: #9ca3af;"/>
+                    <ListView fx:id="accountListView" prefHeight="145.0">
+                        <placeholder>
+                            <Label text="还没有离线账号" style="-fx-text-fill: #8b8d98;"/>
+                        </placeholder>
+                    </ListView>
+                    <HBox spacing="10.0">
+                        <Button text="添加账号" onAction="#onAddAccountClick"
+                                style="-fx-background-color: #292b35; -fx-text-fill: #e5e7eb;"/>
+                        <Button text="设为当前账号" onAction="#onAccountSelectedClick"
+                                style="-fx-background-color: #292b35; -fx-text-fill: #e5e7eb;"/>
+                        <Button text="删除所选账号" onAction="#onManageAccountsClick"
+                                style="-fx-background-color: #38252b; -fx-text-fill: #fca5a5;"/>
+                    </HBox>
+                </VBox>
+                <VBox spacing="12.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="20.0" left="22.0" right="22.0" top="20.0"/>
+                    </padding>
+                    <Label text="下载源" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <Label text="选择 Minecraft 清单、游戏本体及依赖的下载源。" style="-fx-font-size: 12px; -fx-text-fill: #9ca3af;"/>
+                    <ComboBox fx:id="mirrorComboBox" maxWidth="Infinity"/>
+                </VBox>
+                <VBox spacing="12.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+                    <padding>
+                        <Insets bottom="20.0" left="22.0" right="22.0" top="20.0"/>
+                    </padding>
+                    <Label text="游戏目录" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+                    <HBox spacing="8.0">
+                        <TextField fx:id="gameDirectoryField" HBox.hgrow="ALWAYS"/>
+                        <Button text="浏览…" onAction="#onChooseGameDirectoryClick"
+                                style="-fx-background-color: #292b35; -fx-text-fill: #e5e7eb;"/>
+                    </HBox>
+                </VBox>
+            </VBox>
+        </StackPane>
+
+        <VBox spacing="9.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 12;">
+            <padding>
+                <Insets bottom="14.0" left="18.0" right="18.0" top="14.0"/>
+            </padding>
+            <HBox alignment="CENTER_LEFT" spacing="10.0">
+                <Label text="任务状态" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #e5e7eb;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="statusLabel" text="正在连接版本服务..."
+                       style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
             </HBox>
+            <ProgressBar fx:id="progressBar" maxWidth="Infinity" progress="0"
+                         style="-fx-accent: #8b5cf6;"/>
+            <Label fx:id="gameDirectoryLabel" style="-fx-font-size: 10px; -fx-text-fill: #71717a;"/>
         </VBox>
-    </HBox>
-
-    <VBox spacing="8.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
-        <padding>
-            <Insets bottom="24.0" left="26.0" right="26.0" top="24.0"/>
-        </padding>
-        <Label text="准备好开始冒险了吗？" style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f9fafb;"/>
-        <Label text="选择游戏版本与下载源，安装完成后即可启动。" style="-fx-font-size: 13px; -fx-text-fill: #9ca3af;"/>
-        <HBox spacing="14.0" style="-fx-padding: 14 0 0 0;">
-            <VBox spacing="7.0" HBox.hgrow="ALWAYS">
-                <Label text="游戏版本" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
-                <ComboBox fx:id="versionComboBox" maxWidth="Infinity" promptText="选择 Minecraft 版本"/>
-            </VBox>
-            <VBox spacing="7.0" prefWidth="180.0">
-                <Label text="下载源" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
-                <ComboBox fx:id="mirrorComboBox" maxWidth="Infinity" promptText="选择下载源"/>
-            </VBox>
-        </HBox>
-        <HBox spacing="14.0">
-            <VBox spacing="7.0" HBox.hgrow="ALWAYS">
-                <Label text="启动配置" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
-                <ComboBox fx:id="profileComboBox" maxWidth="Infinity" promptText="请先安装游戏版本"/>
-            </VBox>
-            <VBox spacing="7.0" prefWidth="150.0">
-                <Label text="模组加载器" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
-                <ComboBox fx:id="loaderTypeComboBox" maxWidth="Infinity" promptText="选择加载器"/>
-            </VBox>
-            <VBox spacing="7.0" prefWidth="150.0">
-                <Label text="加载器版本" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
-                <ComboBox fx:id="loaderVersionComboBox" maxWidth="Infinity" promptText="选择加载器版本"/>
-            </VBox>
-        </HBox>
-        <HBox alignment="CENTER_LEFT" spacing="12.0" style="-fx-padding: 12 0 0 0;">
-            <Button fx:id="launchButton" text="安装后即可启动" onAction="#onLaunchClick" disable="true"
-                    prefWidth="190.0" prefHeight="44.0"
-                    style="-fx-background-color: #8b5cf6; -fx-background-radius: 8; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;"/>
-            <Button fx:id="installButton" text="下载并安装" onAction="#onInstallClick" disable="true"
-                    prefWidth="130.0" prefHeight="44.0"
-                    style="-fx-background-color: #292b35; -fx-background-radius: 8; -fx-text-fill: #e5e7eb; -fx-font-size: 13px;"/>
-            <Button fx:id="installLoaderButton" text="安装加载器" onAction="#onInstallLoaderClick" disable="true"
-                    prefWidth="130.0" prefHeight="44.0"
-                    style="-fx-background-color: #292b35; -fx-background-radius: 8; -fx-text-fill: #c4b5fd; -fx-font-size: 13px;"/>
-        </HBox>
     </VBox>
-
-    <VBox spacing="10.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 12;">
-        <padding>
-            <Insets bottom="17.0" left="20.0" right="20.0" top="17.0"/>
-        </padding>
-        <HBox alignment="CENTER_LEFT" spacing="10.0">
-            <Label text="安装进度" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #e5e7eb;"/>
-            <HBox HBox.hgrow="ALWAYS"/>
-            <Label fx:id="statusLabel" text="正在连接版本服务..."
-                   style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
-        </HBox>
-        <ProgressBar fx:id="progressBar" maxWidth="Infinity" progress="0"
-                     style="-fx-accent: #8b5cf6;"/>
-    </VBox>
-
-    <HBox alignment="CENTER_LEFT" spacing="8.0">
-        <Label text="游戏目录" style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
-        <Label fx:id="gameDirectoryLabel" style="-fx-font-size: 11px; -fx-text-fill: #c4c7d0;"/>
-    </HBox>
-</VBox>
+</HBox>

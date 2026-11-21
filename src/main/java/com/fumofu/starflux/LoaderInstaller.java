@@ -26,8 +26,8 @@ import java.util.regex.Pattern;
 public class LoaderInstaller {
     private static final String FABRIC_META = "https://meta.fabricmc.net";
     private static final String QUILT_META = "https://meta.quiltmc.org";
-    private static final String FORGE_PROMOTIONS =
-            "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
+    private static final String FORGE_METADATA =
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
     private static final String NEOFORGE_METADATA =
             "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 
@@ -35,7 +35,8 @@ public class LoaderInstaller {
         requireVersion(minecraftVersion);
         switch (type) {
             case FABRIC:
-                return fetchJsonLoaderVersions(FABRIC_META + "/v2/versions/loader/" + minecraftVersion, "loader");
+                return fetchJsonLoaderVersions(
+                        FABRIC_META + "/v2/versions/loader/" + minecraftVersion, "loader");
             case QUILT:
                 return fetchJsonLoaderVersions(QUILT_META + "/v3/versions/loader/" + minecraftVersion, "loader");
             case FORGE:
@@ -70,6 +71,7 @@ public class LoaderInstaller {
         switch (type) {
             case FABRIC:
                 command.add("client");
+                command.add("-noprofile");
                 command.add("-dir");
                 command.add(gameDirectory.toAbsolutePath().toString());
                 command.add("-mcversion");
@@ -154,8 +156,7 @@ public class LoaderInstaller {
     private static String installerVersion(LoaderType type, String loaderVersion) throws IOException {
         switch (type) {
             case FABRIC:
-                JsonArray fabricInstallers = parseJson(readUrl(FABRIC_META + "/v2/versions/installer"))
-                        .getAsJsonArray();
+                JsonArray fabricInstallers = parseJsonArray(readUrl(FABRIC_META + "/v2/versions/installer"));
                 if (fabricInstallers.isEmpty()) {
                     throw new IOException("Fabric Installer 版本列表为空");
                 }
@@ -169,7 +170,7 @@ public class LoaderInstaller {
     }
 
     private static List<String> fetchJsonLoaderVersions(String url, String key) throws IOException {
-        JsonArray versions = parseJson(readUrl(url)).getAsJsonArray();
+        JsonArray versions = parseJsonArray(readUrl(url));
         Set<String> unique = new LinkedHashSet<String>();
         for (JsonElement element : versions) {
             JsonObject version = element.getAsJsonObject().getAsJsonObject(key);
@@ -181,20 +182,28 @@ public class LoaderInstaller {
     }
 
     private static List<String> fetchForgeVersions(String minecraftVersion) throws IOException {
-        JsonObject promotions = parseJson(readUrl(FORGE_PROMOTIONS)).getAsJsonObject("promos");
+        String metadata = new String(readUrl(FORGE_METADATA), "UTF-8");
+        Matcher matcher = Pattern.compile("<version>\\s*([^<]+?)\\s*</version>").matcher(metadata);
         Set<String> versions = new LinkedHashSet<String>();
-        String recommended = optionalString(promotions, minecraftVersion + "-recommended");
-        String latest = optionalString(promotions, minecraftVersion + "-latest");
-        if (recommended != null) {
-            versions.add(minecraftVersion + "-" + recommended);
+        String prefix = minecraftVersion + "-";
+        while (matcher.find()) {
+            String version = matcher.group(1).trim();
+            if (version.startsWith(prefix)
+                    && version.substring(prefix.length()).matches("[A-Za-z0-9._+-]+")) {
+                versions.add(version);
+            }
         }
-        if (latest != null) {
-            versions.add(minecraftVersion + "-" + latest);
-        }
-        if (versions.isEmpty()) {
+        List<String> result = new ArrayList<String>(versions);
+        Collections.sort(result, new Comparator<String>() {
+            @Override
+            public int compare(String left, String right) {
+                return compareVersions(right.substring(prefix.length()), left.substring(prefix.length()));
+            }
+        });
+        if (result.isEmpty()) {
             throw new IOException("Forge 尚未为 Minecraft " + minecraftVersion + " 发布推荐或最新版本");
         }
-        return new ArrayList<String>(versions);
+        return result;
     }
 
     private static List<String> fetchNeoForgeVersions(String minecraftVersion) throws IOException {
@@ -204,7 +213,9 @@ public class LoaderInstaller {
         List<String> versions = new ArrayList<String>();
         while (matcher.find()) {
             String version = matcher.group(1).trim();
-            if (version.startsWith(prefix) && version.matches("[0-9][A-Za-z0-9.+_-]*")) {
+            boolean modernVersion = version.startsWith(prefix);
+            boolean legacyVersion = version.startsWith(minecraftVersion + "-");
+            if ((modernVersion || legacyVersion) && version.matches("[0-9][A-Za-z0-9.+_-]*")) {
                 versions.add(version);
             }
         }
@@ -225,11 +236,8 @@ public class LoaderInstaller {
         if (parts.length < 2 || !"1".equals(parts[0])) {
             throw new IOException("无法识别 Minecraft 版本：" + minecraftVersion);
         }
-        String prefix = parts[1] + ".";
-        if (parts.length > 2) {
-            prefix += parts[2] + ".";
-        }
-        return prefix;
+        String gameMinor = parts.length > 2 ? parts[2] : "0";
+        return parts[1] + "." + gameMinor + ".";
     }
 
     private static int compareVersions(String left, String right) {
@@ -330,6 +338,14 @@ public class LoaderInstaller {
             return new JsonParser().parse(new String(bytes, "UTF-8")).getAsJsonObject();
         } catch (RuntimeException exception) {
             throw new IOException("加载器服务返回了无效 JSON", exception);
+        }
+    }
+
+    private static JsonArray parseJsonArray(byte[] bytes) throws IOException {
+        try {
+            return new JsonParser().parse(new String(bytes, "UTF-8")).getAsJsonArray();
+        } catch (RuntimeException exception) {
+            throw new IOException("加载器服务返回了无效 JSON 数组", exception);
         }
     }
 

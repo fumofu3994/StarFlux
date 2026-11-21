@@ -60,7 +60,7 @@ public class MinecraftGameLauncher {
         placeholders.put("user_properties", "{}");
         placeholders.put("user_type", "legacy");
         placeholders.put("version_type", getString(version, "type", "release"));
-        placeholders.put("launcher_name", "StarFlux");
+        placeholders.put("launcher_name", "StarFlux MC Launcher");
         placeholders.put("launcher_version", "1.0");
         placeholders.put("natives_directory", nativesDirectory.toAbsolutePath().toString());
         placeholders.put("classpath", classpathValue);

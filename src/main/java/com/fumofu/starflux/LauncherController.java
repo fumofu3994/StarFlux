@@ -5,26 +5,47 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextInputDialog;
-
+import javafx.scene.control.TextField;
+import javafx.scene.layout.StackPane;
+import javafx.stage.DirectoryChooser;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.prefs.Preferences;
 import java.util.stream.Stream;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class LauncherController {
+    @FXML
+    private StackPane pageContainer;
+    @FXML
+    private javafx.scene.layout.VBox playPage;
+    @FXML
+    private javafx.scene.layout.VBox downloadPage;
+    @FXML
+    private javafx.scene.layout.VBox settingsPage;
+    @FXML
+    private Button playNavButton;
+    @FXML
+    private Button downloadNavButton;
+    @FXML
+    private Button settingsNavButton;
     @FXML
     private ComboBox<MirrorSource> mirrorComboBox;
     @FXML
@@ -32,141 +53,153 @@ public class LauncherController {
     @FXML
     private ComboBox<String> accountComboBox;
     @FXML
-    private ComboBox<LoaderType> loaderTypeComboBox;
+    private ListView<InstalledProfile> profileListView;
     @FXML
-    private ComboBox<String> loaderVersionComboBox;
+    private Label installedProfilesLabel;
     @FXML
-    private ComboBox<InstalledProfile> profileComboBox;
+    private ListView<String> accountListView;
     @FXML
     private Button installButton;
     @FXML
     private Button launchButton;
     @FXML
-    private Button installLoaderButton;
+    private Button deleteProfileButton;
     @FXML
     private ProgressBar progressBar;
     @FXML
     private Label statusLabel;
     @FXML
     private Label gameDirectoryLabel;
+    @FXML
+    private TextField gameDirectoryField;
 
     private final OfflineAccountStore accountStore = new OfflineAccountStore();
     private final MinecraftGameLauncher gameLauncher = new MinecraftGameLauncher();
-    private final LoaderInstaller loaderInstaller = new LoaderInstaller();
-    private final AtomicLong loaderRequest = new AtomicLong();
+    private final Preferences preferences = Preferences.userNodeForPackage(LauncherController.class);
+    private static final String GAME_DIRECTORY_KEY = "game-directory";
     private Process gameProcess;
 
     @FXML
     private void initialize() {
-        Path gameDirectory = getGameDirectory();
-        gameDirectoryLabel.setText("游戏目录  " + gameDirectory.toAbsolutePath());
+        gameDirectoryField.setText(getGameDirectory().toAbsolutePath().toString());
+        updateGameDirectoryLabel();
 
         mirrorComboBox.getItems().setAll(MirrorSource.values());
-        mirrorComboBox.getSelectionModel().select(MirrorSource.MOJANG);
-        mirrorComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+        String savedMirror = preferences.get("download-mirror", MirrorSource.MOJANG.name());
+        try {
+            mirrorComboBox.getSelectionModel().select(MirrorSource.valueOf(savedMirror));
+        } catch (IllegalArgumentException exception) {
+            mirrorComboBox.getSelectionModel().select(MirrorSource.MOJANG);
+        }
+        mirrorComboBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (newValue != null && newValue != oldValue) {
-                loadVersions(newValue);
+                preferences.put("download-mirror", newValue.name());
+                if (!versionComboBox.getItems().isEmpty()) {
+                    loadVersions(newValue);
+                }
             }
         });
-        versionComboBox.valueProperty().addListener((observable, oldValue, newValue) ->
-                {
-                    refreshInstalledProfiles(null);
-                    loadLoaderVersions();
-                });
-        loaderTypeComboBox.getItems().setAll(LoaderType.values());
-        loaderTypeComboBox.getSelectionModel().select(LoaderType.FABRIC);
-        loaderTypeComboBox.valueProperty().addListener((observable, oldValue, newValue) ->
-                loadLoaderVersions());
-        profileComboBox.valueProperty().addListener((observable, oldValue, newValue) ->
-                updateLaunchButton());
-        accountComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
+        profileListView.getSelectionModel().selectedItemProperty().addListener((_, _, _) -> {
+            updateLaunchButton();
+            updateInstalledProfileActions();
+        });
+        accountComboBox.valueProperty().addListener((_, _, newValue) -> {
             if (newValue != null) {
                 accountStore.selectAccount(newValue);
             }
+            if (accountListView != null) {
+                refreshAccountList();
+            }
             updateLaunchButton();
         });
+        gameDirectoryField.textProperty().addListener((_, _, newValue) -> {
+            if (newValue != null && !newValue.trim().isEmpty()) {
+                preferences.put(GAME_DIRECTORY_KEY, newValue.trim());
+                updateGameDirectoryLabel();
+            }
+        });
         refreshAccounts();
+        refreshInstalledProfiles(null);
+        showPlayPage();
         loadVersions(mirrorComboBox.getValue());
     }
 
-    private void loadLoaderVersions() {
-        MinecraftInstaller.VersionEntry minecraftVersion = versionComboBox.getValue();
-        LoaderType loaderType = loaderTypeComboBox.getValue();
-        long request = loaderRequest.incrementAndGet();
-        loaderVersionComboBox.getItems().clear();
-        installLoaderButton.setDisable(true);
-        if (minecraftVersion == null || loaderType == null) {
-            return;
-        }
-
-        loaderVersionComboBox.setDisable(true);
-        Task<List<String>> task = new Task<List<String>>() {
-            @Override
-            protected List<String> call() throws Exception {
-                return loaderInstaller.fetchVersions(loaderType, minecraftVersion.getId());
-            }
-        };
-        task.setOnSucceeded(event -> {
-            if (request != loaderRequest.get()) {
-                return;
-            }
-            loaderVersionComboBox.getItems().setAll(task.getValue());
-            loaderVersionComboBox.setDisable(false);
-            if (!loaderVersionComboBox.getItems().isEmpty()) {
-                loaderVersionComboBox.getSelectionModel().selectFirst();
-                installLoaderButton.setDisable(false);
-            } else {
-                statusLabel.setText(loaderType + " 没有适用于 Minecraft "
-                        + minecraftVersion.getId() + " 的版本");
-            }
-        });
-        task.setOnFailed(event -> {
-            if (request != loaderRequest.get()) {
-                return;
-            }
-            loaderVersionComboBox.setDisable(false);
-            statusLabel.setText("加载 " + loaderType + " 版本失败：" + messageFor(task.getException()));
-        });
-        new Thread(task, "loader-versions-" + loaderType.name().toLowerCase()).start();
+    @FXML
+    private void showPlayPage() {
+        showPage(playPage, playNavButton);
     }
 
     @FXML
-    private void onInstallLoaderClick() {
+    private void showDownloadPage() {
+        showPage(downloadPage, downloadNavButton);
+        if (versionComboBox.getItems().isEmpty() && !versionComboBox.isDisabled()) {
+            loadVersions(mirrorComboBox.getValue());
+        }
+    }
+
+    @FXML
+    private void showSettingsPage() {
+        showPage(settingsPage, settingsNavButton);
+    }
+
+    private void showPage(javafx.scene.layout.VBox page, Button activeButton) {
+        playPage.setVisible(page == playPage);
+        playPage.setManaged(page == playPage);
+        downloadPage.setVisible(page == downloadPage);
+        downloadPage.setManaged(page == downloadPage);
+        settingsPage.setVisible(page == settingsPage);
+        settingsPage.setManaged(page == settingsPage);
+        playNavButton.setStyle(navStyle(playNavButton == activeButton));
+        downloadNavButton.setStyle(navStyle(downloadNavButton == activeButton));
+        settingsNavButton.setStyle(navStyle(settingsNavButton == activeButton));
+    }
+
+    private static String navStyle(boolean active) {
+        return active
+                ? "-fx-background-color: #29233d; -fx-background-radius: 8; -fx-text-fill: #c4b5fd; -fx-alignment: CENTER_LEFT;"
+                : "-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: #a1a1aa; -fx-alignment: CENTER_LEFT;";
+    }
+
+    @FXML
+    private void onLoaderMenuClick() {
         MinecraftInstaller.VersionEntry minecraftVersion = versionComboBox.getValue();
-        LoaderType loaderType = loaderTypeComboBox.getValue();
-        String loaderVersion = loaderVersionComboBox.getValue();
-        if (minecraftVersion == null || loaderType == null || loaderVersion == null) {
-            statusLabel.setText("请选择 Minecraft 版本、加载器和加载器版本");
+        if (minecraftVersion == null) {
+            statusLabel.setText("请先选择 Minecraft 版本");
             return;
         }
 
-        Path gameDirectory = getGameDirectory();
-        setBusy(true);
-        progressBar.setProgress(-1);
-        statusLabel.setText("正在安装 " + loaderType + "...");
-        Task<Void> task = new Task<Void>() {
-            @Override
-            protected Void call() throws Exception {
-                loaderInstaller.install(loaderType, minecraftVersion.getId(), loaderVersion, gameDirectory,
-                        message -> Platform.runLater(() -> statusLabel.setText(message)));
-                return null;
-            }
-        };
-        task.setOnSucceeded(event -> {
-            statusLabel.setText(loaderType + " 安装完成");
-            progressBar.setProgress(1);
-            setBusy(false);
-            refreshInstalledProfiles(loaderType.name().toLowerCase());
-            updateLaunchButton();
-        });
-        task.setOnFailed(event -> {
-            statusLabel.setText("安装 " + loaderType + " 失败：" + messageFor(task.getException()));
-            progressBar.setProgress(0);
-            setBusy(false);
-            loadLoaderVersions();
-            updateLaunchButton();
-        });
-        new Thread(task, "loader-install-" + loaderType.name().toLowerCase()).start();
+        Optional<LoaderType> installed = new LoaderInstallDialog().showAndWait(
+                launchButton.getScene().getWindow(), minecraftVersion.getId(), getGameDirectory());
+        if (installed.isPresent()) {
+            refreshInstalledProfiles(installed.get().name().toLowerCase());
+            statusLabel.setText(installed.get() + " 安装完成");
+        }
+    }
+
+    @FXML
+    private void onModpackClick() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("整合包下载");
+        alert.setHeaderText("整合包下载尚未接入");
+        alert.setContentText("这里将支持搜索并安装 Modrinth 与 CurseForge 整合包。当前可以先安装 Minecraft 本体和模组加载器。");
+        alert.showAndWait();
+    }
+
+    @FXML
+    private void onChooseGameDirectoryClick() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("选择 Minecraft 游戏目录");
+        Path current = getGameDirectory();
+        if (Files.isDirectory(current)) {
+            chooser.setInitialDirectory(current.toFile());
+        } else if (current.getParent() != null && Files.isDirectory(current.getParent())) {
+            chooser.setInitialDirectory(current.getParent().toFile());
+        }
+        java.io.File selected = chooser.showDialog(gameDirectoryField.getScene().getWindow());
+        if (selected != null) {
+            gameDirectoryField.setText(selected.toPath().toAbsolutePath().normalize().toString());
+            refreshInstalledProfiles(null);
+        }
     }
 
     private void loadVersions(MirrorSource mirrorSource) {
@@ -178,13 +211,13 @@ public class LauncherController {
         mirrorComboBox.setDisable(true);
         versionComboBox.setDisable(true);
 
-        Task<List<MinecraftInstaller.VersionEntry>> task = new Task<List<MinecraftInstaller.VersionEntry>>() {
+        Task<List<MinecraftInstaller.VersionEntry>> task = new Task<>() {
             @Override
             protected List<MinecraftInstaller.VersionEntry> call() throws Exception {
                 return selectedInstaller.fetchVersions();
             }
         };
-        task.setOnSucceeded(event -> {
+        task.setOnSucceeded(_ -> {
             versionComboBox.getItems().setAll(task.getValue());
             versionComboBox.setDisable(false);
             mirrorComboBox.setDisable(false);
@@ -199,7 +232,7 @@ public class LauncherController {
             }
             updateLaunchButton();
         });
-        task.setOnFailed(event -> {
+        task.setOnFailed(_ -> {
             statusLabel.setText("加载版本列表失败：" + messageFor(task.getException()));
             progressBar.setProgress(0);
             mirrorComboBox.setDisable(false);
@@ -215,7 +248,7 @@ public class LauncherController {
         dialog.setHeaderText("输入游戏内显示的玩家名称");
         dialog.setContentText("名称（3–16 位英文字母、数字或下划线）：");
         Optional<String> result = dialog.showAndWait();
-        if (!result.isPresent()) {
+        if (result.isEmpty()) {
             return;
         }
         String name = result.get().trim();
@@ -230,39 +263,78 @@ public class LauncherController {
 
     @FXML
     private void onManageAccountsClick() {
-        ListView<String> accounts = new ListView<String>();
-        accounts.getItems().setAll(accountStore.getAccounts());
-        accounts.setPrefHeight(180);
-        Alert dialog = new Alert(Alert.AlertType.NONE);
-        dialog.setTitle("账号管理");
-        dialog.setHeaderText("离线账号");
-        dialog.getDialogPane().setContent(accounts);
-        javafx.scene.control.ButtonType removeButton =
-                new javafx.scene.control.ButtonType("移除所选账号", javafx.scene.control.ButtonBar.ButtonData.LEFT);
-        javafx.scene.control.ButtonType closeButton =
-                new javafx.scene.control.ButtonType("完成", javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getButtonTypes().setAll(removeButton, closeButton);
-        dialog.setResultConverter(button -> {
-            if (button == removeButton) {
-                String selected = accounts.getSelectionModel().getSelectedItem();
-                if (selected == null) {
-                    showError("未选择账号", "请先选择要移除的账号。");
-                } else {
-                    accountStore.removeAccount(selected);
-                    accounts.getItems().remove(selected);
-                    statusLabel.setText("已移除离线账号 " + selected);
-                }
-                return removeButton;
-            }
-            return closeButton;
-        });
-        while (true) {
-            Optional<javafx.scene.control.ButtonType> result = dialog.showAndWait();
-            if (!result.isPresent() || result.get() != removeButton) {
-                break;
-            }
+        String selected = accountListView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            statusLabel.setText("请先在设置页选择要删除的账号");
+            return;
         }
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmation.setTitle("删除离线账号");
+        confirmation.setHeaderText("确定删除账号 " + selected + "？");
+        confirmation.setContentText("此操作只会从启动器中移除该账号。");
+        Optional<javafx.scene.control.ButtonType> result = confirmation.showAndWait();
+        if (result.isEmpty() || result.get() != javafx.scene.control.ButtonType.OK) {
+            return;
+        }
+        accountStore.removeAccount(selected);
         refreshAccounts();
+        refreshAccountList();
+        statusLabel.setText("已删除离线账号 " + selected);
+    }
+
+    @FXML
+    private void onRefreshInstalledProfilesClick() {
+        refreshInstalledProfiles(null);
+    }
+
+    @FXML
+    private void onDeleteInstalledProfileClick() {
+        InstalledProfile profile = profileListView.getSelectionModel().getSelectedItem();
+        if (profile == null) {
+            statusLabel.setText("请先选择要删除的版本");
+            return;
+        }
+
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmation.setTitle("删除已安装版本");
+        confirmation.setHeaderText("确定删除 " + profile.id + "？");
+        confirmation.setContentText("只删除该版本目录；共享库、资源文件、存档和其他版本不会删除。");
+        Optional<ButtonType> result = confirmation.showAndWait();
+        if (result.isEmpty() || result.get() != ButtonType.OK) {
+            return;
+        }
+
+        Path versionsDirectory = getGameDirectory().resolve("versions").toAbsolutePath().normalize();
+        Path profileDirectory = versionsDirectory.resolve(profile.id).normalize();
+        if (!versionsDirectory.equals(profileDirectory.getParent())) {
+            statusLabel.setText("无法删除该版本：版本目录无效");
+            return;
+        }
+        if (!Files.exists(profileDirectory, LinkOption.NOFOLLOW_LINKS)) {
+            statusLabel.setText("该版本目录已不存在");
+            refreshInstalledProfiles(null);
+            return;
+        }
+
+        try {
+            deleteProfileDirectory(profileDirectory);
+            statusLabel.setText("已删除版本 " + profile.id);
+            refreshInstalledProfiles(null);
+        } catch (IOException exception) {
+            statusLabel.setText("删除版本失败：" + messageFor(exception));
+        }
+    }
+
+    @FXML
+    private void onAccountSelectedClick() {
+        String selected = accountListView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            statusLabel.setText("请先选择一个离线账号");
+            return;
+        }
+        accountStore.selectAccount(selected);
+        refreshAccounts();
+        statusLabel.setText("已将 " + selected + " 设为当前账号");
     }
 
     @FXML
@@ -280,7 +352,7 @@ public class LauncherController {
         progressBar.setProgress(-1);
         statusLabel.setText("正在准备安装 " + version.getId() + "...");
 
-        Task<Void> task = new Task<Void>() {
+        Task<Void> task = new Task<>() {
             @Override
             protected Void call() throws Exception {
                 selectedInstaller.install(version, gameDirectory, (completed, total, name) ->
@@ -291,14 +363,14 @@ public class LauncherController {
                 return null;
             }
         };
-        task.setOnSucceeded(event -> {
+        task.setOnSucceeded(_ -> {
             statusLabel.setText(version.getId() + " 安装完成");
             progressBar.setProgress(1);
             setBusy(false);
             refreshInstalledProfiles(null);
             updateLaunchButton();
         });
-        task.setOnFailed(event -> {
+        task.setOnFailed(_ -> {
             statusLabel.setText("安装失败：" + messageFor(task.getException()));
             progressBar.setProgress(0);
             setBusy(false);
@@ -309,14 +381,13 @@ public class LauncherController {
 
     @FXML
     private void onLaunchClick() {
-        MinecraftInstaller.VersionEntry version = versionComboBox.getValue();
         String account = accountComboBox.getValue();
-        if (version == null || account == null) {
-            statusLabel.setText("请选择游戏版本和离线账号");
+        if (account == null) {
+            statusLabel.setText("请先在设置中添加并选择离线账号");
             return;
         }
         try {
-            InstalledProfile profile = profileComboBox.getValue();
+            InstalledProfile profile = profileListView.getSelectionModel().getSelectedItem();
             if (profile == null) {
                 statusLabel.setText("所选 Minecraft 版本尚未安装");
                 return;
@@ -328,10 +399,12 @@ public class LauncherController {
                             ? "Minecraft 已退出" : "Minecraft 异常退出，日志：.minecraft/logs/starflux-launcher.log");
                     gameProcess = null;
                     updateLaunchButton();
+                    updateInstalledProfileActions();
                 }
             }));
             statusLabel.setText("Minecraft " + profile.id + " 已启动（离线账号：" + account + "）");
             updateLaunchButton();
+            updateInstalledProfileActions();
         } catch (Exception exception) {
             statusLabel.setText("启动失败：" + messageFor(exception));
         }
@@ -349,7 +422,18 @@ public class LauncherController {
         } else {
             accountComboBox.getSelectionModel().select(selected);
         }
+        refreshAccountList();
         updateLaunchButton();
+    }
+
+    private void refreshAccountList() {
+        String selected = accountStore.getSelectedAccount();
+        accountListView.getItems().setAll(accountStore.getAccounts());
+        if (selected != null && !selected.isEmpty() && accountListView.getItems().contains(selected)) {
+            accountListView.getSelectionModel().select(selected);
+        } else {
+            accountListView.getSelectionModel().clearSelection();
+        }
     }
 
     private void updateLaunchButton() {
@@ -357,51 +441,63 @@ public class LauncherController {
             return;
         }
         String account = accountComboBox.getValue();
-        InstalledProfile profile = profileComboBox.getValue();
+        InstalledProfile profile = profileListView.getSelectionModel().getSelectedItem();
         boolean installed = profile != null && account != null;
-        launchButton.setDisable(!installed || gameProcess != null || installButton.isDisabled());
+        launchButton.setDisable(!installed || gameProcess != null);
         launchButton.setText(installed ? "启动游戏" : "安装后即可启动");
+    }
+
+    private void updateInstalledProfileActions() {
+        if (deleteProfileButton != null) {
+            boolean noSelection = profileListView.getSelectionModel().getSelectedItem() == null;
+            deleteProfileButton.setDisable(noSelection || profileListView.isDisabled() || gameProcess != null);
+        }
     }
 
     private void setBusy(boolean busy) {
         mirrorComboBox.setDisable(busy);
         versionComboBox.setDisable(busy);
-        accountComboBox.setDisable(busy);
-        loaderTypeComboBox.setDisable(busy);
-        loaderVersionComboBox.setDisable(busy);
-        profileComboBox.setDisable(busy);
+        profileListView.setDisable(busy);
         installButton.setDisable(busy || versionComboBox.getValue() == null);
-        installLoaderButton.setDisable(busy || loaderVersionComboBox.getValue() == null);
         launchButton.setDisable(busy);
+        updateInstalledProfileActions();
+    }
+
+    private static void deleteProfileDirectory(Path profileDirectory) throws IOException {
+        Files.walkFileTree(profileDirectory, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path directory, IOException exception) throws IOException {
+                if (exception != null) {
+                    throw exception;
+                }
+                Files.delete(directory);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void refreshInstalledProfiles(String preferredType) {
-        MinecraftInstaller.VersionEntry version = versionComboBox.getValue();
-        String oldSelection = profileComboBox.getValue() == null ? null : profileComboBox.getValue().id;
+        InstalledProfile oldSelection = profileListView.getSelectionModel().getSelectedItem();
         List<InstalledProfile> profiles = new ArrayList<InstalledProfile>();
-        if (version == null) {
-            profileComboBox.getItems().clear();
-            updateLaunchButton();
-            return;
-        }
-
         Path versionsDirectory = getGameDirectory().resolve("versions");
         if (!Files.isDirectory(versionsDirectory)) {
-            profileComboBox.getItems().clear();
+            profileListView.getItems().clear();
+            installedProfilesLabel.setText("0 个已安装版本");
             updateLaunchButton();
             return;
-        }
-        Path vanillaDirectory = versionsDirectory.resolve(version.getId());
-        if (Files.isRegularFile(vanillaDirectory.resolve(version.getId() + ".json"))
-                && Files.isRegularFile(vanillaDirectory.resolve(version.getId() + ".jar"))) {
-            profiles.add(new InstalledProfile(version.getId(), "原版"));
         }
         try (Stream<Path> directories = Files.list(versionsDirectory)) {
             java.util.Iterator<Path> iterator = directories.iterator();
             while (iterator.hasNext()) {
                 Path directory = iterator.next();
                 String id = directory.getFileName().toString();
-                if (!Files.isDirectory(directory) || id.equals(version.getId())) {
+                if (!Files.isDirectory(directory)) {
                     continue;
                 }
                 Path profileFile = directory.resolve(id + ".json");
@@ -418,18 +514,25 @@ public class LauncherController {
                     statusLabel.setText("读取游戏配置失败：" + messageFor(exception));
                     continue;
                 }
-                if (version.getId().equals(getJsonString(json, "inheritsFrom"))) {
+                String parent = getJsonString(json, "inheritsFrom");
+                if (parent == null && Files.isRegularFile(directory.resolve(id + ".jar"))) {
+                    profiles.add(new InstalledProfile(id, "原版"));
+                } else if (parent != null && parent.matches("[A-Za-z0-9._-]+")
+                        && Files.isRegularFile(versionsDirectory.resolve(parent)
+                        .resolve(parent + ".jar"))) {
                     profiles.add(new InstalledProfile(id, loaderName(id)));
                 }
             }
         } catch (IOException exception) {
             statusLabel.setText("读取已安装版本失败：" + messageFor(exception));
         }
-        profileComboBox.getItems().setAll(profiles);
-        InstalledProfile selection = findProfile(profiles, oldSelection);
+        profileListView.getItems().setAll(profiles);
+        installedProfilesLabel.setText(profiles.size() + " 个已安装版本");
+        InstalledProfile selection = findProfile(profiles, oldSelection == null ? null : oldSelection.id);
         if (selection == null && preferredType != null) {
             for (InstalledProfile profile : profiles) {
-                if (profile.id.toLowerCase().contains(preferredType)) {
+                if (profile.id.toLowerCase().contains(preferredType)
+                        || profile.type.toLowerCase().contains(preferredType)) {
                     selection = profile;
                     break;
                 }
@@ -438,7 +541,7 @@ public class LauncherController {
         if (selection == null && !profiles.isEmpty()) {
             selection = profiles.get(0);
         }
-        profileComboBox.getSelectionModel().select(selection);
+        profileListView.getSelectionModel().select(selection);
         updateLaunchButton();
     }
 
@@ -475,6 +578,10 @@ public class LauncherController {
         return "模组加载器";
     }
 
+    public StackPane getPageContainer() {
+        return pageContainer;
+    }
+
     private static final class InstalledProfile {
         private final String id;
         private final String type;
@@ -490,8 +597,18 @@ public class LauncherController {
         }
     }
 
-    private static Path getGameDirectory() {
-        return Paths.get(System.getProperty("user.home"), ".minecraft");
+    private Path getGameDirectory() {
+        String configured = preferences.get(GAME_DIRECTORY_KEY, "");
+        if (!configured.trim().isEmpty()) {
+            return Paths.get(configured).toAbsolutePath().normalize();
+        }
+        return Paths.get(System.getProperty("user.home"), ".minecraft").toAbsolutePath().normalize();
+    }
+
+    private void updateGameDirectoryLabel() {
+        if (gameDirectoryLabel != null) {
+            gameDirectoryLabel.setText("游戏目录  " + getGameDirectory());
+        }
     }
 
     private static void showError(String title, String message) {
