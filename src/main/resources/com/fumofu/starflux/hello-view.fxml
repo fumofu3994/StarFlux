@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.VBox?>
+<VBox spacing="22.0" style="-fx-background-color: #111318;" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.fumofu.starflux.LauncherController">
+    <padding>
+        <Insets bottom="28.0" left="34.0" right="34.0" top="28.0"/>
+    </padding>
+    <HBox alignment="CENTER_LEFT" spacing="14.0">
+        <VBox spacing="3.0">
+            <Label text="STARFLUX" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #a78bfa;"/>
+            <Label text="Minecraft Launcher" style="-fx-font-size: 23px; -fx-font-weight: bold; -fx-text-fill: #f3f4f6;"/>
+        </VBox>
+        <HBox HBox.hgrow="ALWAYS"/>
+        <VBox alignment="CENTER_RIGHT" spacing="5.0">
+            <Label text="当前账号" style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
+            <HBox alignment="CENTER_RIGHT" spacing="8.0">
+                <ComboBox fx:id="accountComboBox" prefWidth="150.0" promptText="选择离线账号"/>
+                <Button text="添加账号" onAction="#onAddAccountClick"
+                        style="-fx-background-color: #292b35; -fx-text-fill: #e5e7eb;"/>
+                <Button text="管理" onAction="#onManageAccountsClick"
+                        style="-fx-background-color: transparent; -fx-text-fill: #a78bfa;"/>
+            </HBox>
+        </VBox>
+    </HBox>
+
+    <VBox spacing="8.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 14;">
+        <padding>
+            <Insets bottom="24.0" left="26.0" right="26.0" top="24.0"/>
+        </padding>
+        <Label text="准备好开始冒险了吗？" style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f9fafb;"/>
+        <Label text="选择游戏版本与下载源，安装完成后即可启动。" style="-fx-font-size: 13px; -fx-text-fill: #9ca3af;"/>
+        <HBox spacing="14.0" style="-fx-padding: 14 0 0 0;">
+            <VBox spacing="7.0" HBox.hgrow="ALWAYS">
+                <Label text="游戏版本" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
+                <ComboBox fx:id="versionComboBox" maxWidth="Infinity" promptText="选择 Minecraft 版本"/>
+            </VBox>
+            <VBox spacing="7.0" prefWidth="180.0">
+                <Label text="下载源" style="-fx-font-size: 12px; -fx-text-fill: #c4c7d0;"/>
+                <ComboBox fx:id="mirrorComboBox" maxWidth="Infinity" promptText="选择下载源"/>
+            </VBox>
+        </HBox>
+        <HBox alignment="CENTER_LEFT" spacing="12.0" style="-fx-padding: 12 0 0 0;">
+            <Button fx:id="launchButton" text="安装后即可启动" onAction="#onLaunchClick" disable="true"
+                    prefWidth="190.0" prefHeight="44.0"
+                    style="-fx-background-color: #8b5cf6; -fx-background-radius: 8; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <Button fx:id="installButton" text="下载并安装" onAction="#onInstallClick" disable="true"
+                    prefWidth="130.0" prefHeight="44.0"
+                    style="-fx-background-color: #292b35; -fx-background-radius: 8; -fx-text-fill: #e5e7eb; -fx-font-size: 13px;"/>
+        </HBox>
+    </VBox>
+
+    <VBox spacing="10.0" style="-fx-background-color: #1b1d25; -fx-background-radius: 12;">
+        <padding>
+            <Insets bottom="17.0" left="20.0" right="20.0" top="17.0"/>
+        </padding>
+        <HBox alignment="CENTER_LEFT" spacing="10.0">
+            <Label text="安装进度" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #e5e7eb;"/>
+            <HBox HBox.hgrow="ALWAYS"/>
+            <Label fx:id="statusLabel" text="正在连接版本服务..."
+                   style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
+        </HBox>
+        <ProgressBar fx:id="progressBar" maxWidth="Infinity" progress="0"
+                     style="-fx-accent: #8b5cf6;"/>
+    </VBox>
+
+    <HBox alignment="CENTER_LEFT" spacing="8.0">
+        <Label text="游戏目录" style="-fx-font-size: 11px; -fx-text-fill: #9ca3af;"/>
+        <Label fx:id="gameDirectoryLabel" style="-fx-font-size: 11px; -fx-text-fill: #c4c7d0;"/>
+    </HBox>
+</VBox>
