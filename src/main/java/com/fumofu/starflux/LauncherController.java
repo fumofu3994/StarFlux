@@ -18,6 +18,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -28,7 +29,6 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.prefs.Preferences;
 import java.util.stream.Stream;
 
 public class LauncherController {
@@ -75,7 +75,6 @@ public class LauncherController {
 
     private final OfflineAccountStore accountStore = new OfflineAccountStore();
     private final MinecraftGameLauncher gameLauncher = new MinecraftGameLauncher();
-    private final Preferences preferences = Preferences.userNodeForPackage(LauncherController.class);
     private static final String GAME_DIRECTORY_KEY = "game-directory";
     private Process gameProcess;
 
@@ -85,7 +84,7 @@ public class LauncherController {
         updateGameDirectoryLabel();
 
         mirrorComboBox.getItems().setAll(MirrorSource.values());
-        String savedMirror = preferences.get("download-mirror", MirrorSource.MOJANG.name());
+        String savedMirror = LauncherData.get("download-mirror", MirrorSource.MOJANG.name());
         try {
             mirrorComboBox.getSelectionModel().select(MirrorSource.valueOf(savedMirror));
         } catch (IllegalArgumentException exception) {
@@ -93,7 +92,7 @@ public class LauncherController {
         }
         mirrorComboBox.valueProperty().addListener((_, oldValue, newValue) -> {
             if (newValue != null && newValue != oldValue) {
-                preferences.put("download-mirror", newValue.name());
+                saveConfig("download-mirror", newValue.name());
                 if (!versionComboBox.getItems().isEmpty()) {
                     loadVersions(newValue);
                 }
@@ -105,7 +104,11 @@ public class LauncherController {
         });
         accountComboBox.valueProperty().addListener((_, _, newValue) -> {
             if (newValue != null) {
-                accountStore.selectAccount(newValue);
+                try {
+                    accountStore.selectAccount(newValue);
+                } catch (UncheckedIOException exception) {
+                    statusLabel.setText("保存账号设置失败：" + messageFor(exception));
+                }
             }
             if (accountListView != null) {
                 refreshAccountList();
@@ -114,7 +117,7 @@ public class LauncherController {
         });
         gameDirectoryField.textProperty().addListener((_, _, newValue) -> {
             if (newValue != null && !newValue.trim().isEmpty()) {
-                preferences.put(GAME_DIRECTORY_KEY, newValue.trim());
+                saveConfig(GAME_DIRECTORY_KEY, newValue.trim());
                 updateGameDirectoryLabel();
             }
         });
@@ -256,9 +259,13 @@ public class LauncherController {
             showError("账号名称无效", "离线账号名必须为 3 到 16 位英文字母、数字或下划线。");
             return;
         }
-        accountStore.addAccount(name);
-        refreshAccounts();
-        statusLabel.setText("已添加离线账号 " + name);
+        try {
+            accountStore.addAccount(name);
+            refreshAccounts();
+            statusLabel.setText("已添加离线账号 " + name);
+        } catch (UncheckedIOException exception) {
+            statusLabel.setText("保存账号失败：" + messageFor(exception));
+        }
     }
 
     @FXML
@@ -276,10 +283,14 @@ public class LauncherController {
         if (result.isEmpty() || result.get() != javafx.scene.control.ButtonType.OK) {
             return;
         }
-        accountStore.removeAccount(selected);
-        refreshAccounts();
-        refreshAccountList();
-        statusLabel.setText("已删除离线账号 " + selected);
+        try {
+            accountStore.removeAccount(selected);
+            refreshAccounts();
+            refreshAccountList();
+            statusLabel.setText("已删除离线账号 " + selected);
+        } catch (UncheckedIOException exception) {
+            statusLabel.setText("删除账号失败：" + messageFor(exception));
+        }
     }
 
     @FXML
@@ -332,9 +343,13 @@ public class LauncherController {
             statusLabel.setText("请先选择一个离线账号");
             return;
         }
-        accountStore.selectAccount(selected);
-        refreshAccounts();
-        statusLabel.setText("已将 " + selected + " 设为当前账号");
+        try {
+            accountStore.selectAccount(selected);
+            refreshAccounts();
+            statusLabel.setText("已将 " + selected + " 设为当前账号");
+        } catch (UncheckedIOException exception) {
+            statusLabel.setText("保存账号设置失败：" + messageFor(exception));
+        }
     }
 
     @FXML
@@ -598,11 +613,19 @@ public class LauncherController {
     }
 
     private Path getGameDirectory() {
-        String configured = preferences.get(GAME_DIRECTORY_KEY, "");
+        String configured = LauncherData.get(GAME_DIRECTORY_KEY, "");
         if (!configured.trim().isEmpty()) {
             return Paths.get(configured).toAbsolutePath().normalize();
         }
         return Paths.get(System.getProperty("user.home"), ".minecraft").toAbsolutePath().normalize();
+    }
+
+    private void saveConfig(String key, String value) {
+        try {
+            LauncherData.put(key, value);
+        } catch (UncheckedIOException exception) {
+            statusLabel.setText("保存启动器配置失败：" + messageFor(exception));
+        }
     }
 
     private void updateGameDirectoryLabel() {

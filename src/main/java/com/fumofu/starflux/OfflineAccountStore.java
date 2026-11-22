@@ -3,15 +3,13 @@ package com.fumofu.starflux;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.prefs.Preferences;
 
 public class OfflineAccountStore {
     private static final String ACCOUNTS_KEY = "offline-accounts";
     private static final String SELECTED_KEY = "selected-offline-account";
-    private final Preferences preferences = Preferences.userNodeForPackage(OfflineAccountStore.class);
 
     public List<String> getAccounts() {
-        String stored = preferences.get(ACCOUNTS_KEY, "");
+        String stored = LauncherData.get(ACCOUNTS_KEY, "");
         if (stored.isEmpty()) {
             return Collections.emptyList();
         }
@@ -25,7 +23,7 @@ public class OfflineAccountStore {
     }
 
     public String getSelectedAccount() {
-        return preferences.get(SELECTED_KEY, "");
+        return LauncherData.get(SELECTED_KEY, "");
     }
 
     public void addAccount(String name) {
@@ -42,7 +40,7 @@ public class OfflineAccountStore {
         accounts.remove(name);
         saveAccounts(accounts);
         if (name.equals(getSelectedAccount())) {
-            preferences.put(SELECTED_KEY, accounts.isEmpty() ? "" : accounts.get(0));
+            LauncherData.put(SELECTED_KEY, accounts.isEmpty() ? "" : accounts.get(0));
         }
     }
 
@@ -50,7 +48,7 @@ public class OfflineAccountStore {
         if (!getAccounts().contains(name)) {
             throw new IllegalArgumentException("账号不存在：" + name);
         }
-        preferences.put(SELECTED_KEY, name);
+        LauncherData.put(SELECTED_KEY, name);
     }
 
     private void saveAccounts(List<String> accounts) {
@@ -61,6 +59,6 @@ public class OfflineAccountStore {
             }
             stored.append(name);
         }
-        preferences.put(ACCOUNTS_KEY, stored.toString());
+        LauncherData.put(ACCOUNTS_KEY, stored.toString());
     }
 }

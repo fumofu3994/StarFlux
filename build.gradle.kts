@@ -40,6 +40,12 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+tasks.jar {
+    manifest {
+        attributes["Main-Class"] = "com.fumofu.starflux.LauncherBootstrap"
+    }
+}
+
 jlink {
     imageZip.set(layout.buildDirectory.file("distributions/StarFluxMCLauncher-${javafx.platform.classifier}.zip"))
     options.set(listOf("--strip-debug", "--compress", "2", "--no-header-files", "--no-man-pages"))
