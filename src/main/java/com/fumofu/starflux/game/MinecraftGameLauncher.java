@@ -11,14 +11,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -30,6 +23,11 @@ public class MinecraftGameLauncher {
 
     public Process launch(String versionId, String playerName, Path gameDirectory, int maxMemoryGb)
             throws IOException {
+        return launch(versionId, playerName, gameDirectory, maxMemoryGb, null, "");
+    }
+
+    public Process launch(String versionId, String playerName, Path gameDirectory, int maxMemoryGb,
+                          Path javaExecutable, String customJvmArguments) throws IOException {
         if (versionId == null || !versionId.matches("[A-Za-z0-9._-]+")) {
             throw new IOException("无效的 Minecraft 版本号：" + versionId);
         }
@@ -59,7 +57,7 @@ public class MinecraftGameLauncher {
         placeholders.put("assets_index_name", assetIndex == null
                 ? getString(version, "assets", versionId) : getString(assetIndex, "id", versionId));
         placeholders.put("auth_uuid", UUID.nameUUIDFromBytes(
-                ("OfflinePlayer:" + playerName).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        ("OfflinePlayer:" + playerName).getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 .toString().replace("-", ""));
         placeholders.put("auth_access_token", "0");
         placeholders.put("auth_session", "0");
@@ -76,7 +74,11 @@ public class MinecraftGameLauncher {
         placeholders.put("library_directory", gameDirectory.resolve("libraries").toAbsolutePath().toString());
 
         List<String> command = new ArrayList<String>();
-        command.add(javaExecutable().toString());
+        Path selectedJava = javaExecutable == null ? javaExecutable() : javaExecutable.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(selectedJava) || !Files.isExecutable(selectedJava)) {
+            throw new IOException("所选 Java 可执行文件不存在或无法运行：" + selectedJava);
+        }
+        command.add(selectedJava.toString());
         JsonObject arguments = version.getAsJsonObject("arguments");
         if (arguments != null && arguments.has("jvm")) {
             addArguments(command, arguments.getAsJsonArray("jvm"), placeholders);
@@ -89,6 +91,7 @@ public class MinecraftGameLauncher {
             command.add("-cp");
             command.add(classpathValue);
         }
+        command.addAll(parseJvmArguments(customJvmArguments));
         applyMaximumMemory(command, maxMemoryGb);
 
         String mainClass = getString(version, "mainClass", null);
@@ -119,6 +122,60 @@ public class MinecraftGameLauncher {
         } catch (IOException exception) {
             throw new IOException("启动 Minecraft 失败，请确认已安装合适的 Java 版本：" + exception.getMessage(), exception);
         }
+    }
+
+    public int getRequiredJavaFeature(String versionId, Path gameDirectory) throws IOException {
+        JsonObject version = loadVersion(versionId, gameDirectory, new HashSet<String>(), 0);
+        JsonObject javaVersion = version.getAsJsonObject("javaVersion");
+        if (javaVersion != null && javaVersion.has("majorVersion")) {
+            return javaVersion.get("majorVersion").getAsInt();
+        }
+        return JavaRuntimeManager.requiredFeature(versionId);
+    }
+
+    private static List<String> parseJvmArguments(String arguments) throws IOException {
+        List<String> parsed = new ArrayList<>();
+        if (arguments == null || arguments.trim().isEmpty()) {
+            return parsed;
+        }
+        StringBuilder current = new StringBuilder();
+        char quote = 0;
+        for (int index = 0; index < arguments.length(); index++) {
+            char character = arguments.charAt(index);
+            if (character == '\\' && quote != '\'') {
+                if (index + 1 < arguments.length()) {
+                    char next = arguments.charAt(index + 1);
+                    if (Character.isWhitespace(next) || next == '"' || next == '\'' || next == '\\') {
+                        current.append(next);
+                        index++;
+                        continue;
+                    }
+                }
+                current.append(character);
+            } else if ((character == '"' || character == '\'') && (quote == 0 || quote == character)) {
+                quote = quote == 0 ? character : 0;
+            } else if (Character.isWhitespace(character) && quote == 0) {
+                if (current.length() > 0) {
+                    parsed.add(current.toString());
+                    current.setLength(0);
+                }
+            } else {
+                current.append(character);
+            }
+        }
+        if (quote != 0) {
+            throw new IOException("自定义 JVM 参数中的引号或转义符不完整");
+        }
+        if (current.length() > 0) {
+            parsed.add(current.toString());
+        }
+        for (String argument : parsed) {
+            if (argument.equals("-cp") || argument.equals("-classpath")
+                    || argument.equals("--class-path") || argument.equals("-jar")) {
+                throw new IOException("自定义 JVM 参数不能更改 Minecraft 的 classpath 或启动方式");
+            }
+        }
+        return parsed;
     }
 
     private static void applyMaximumMemory(List<String> command, int maxMemoryGb) {

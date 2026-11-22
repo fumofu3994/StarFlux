@@ -46,6 +46,7 @@ public final class JavaRuntimeManager {
             addUnixInstallations(found, "/usr/lib/jvm");
             addUnixInstallations(found, "/Library/Java/JavaVirtualMachines");
         }
+        addManagedInstallations(found, managedJavaDirectory());
 
         List<JavaInstallation> installations = new ArrayList<>(found.values());
         installations.sort(Comparator.comparingInt(JavaInstallation::getMajorVersion).reversed()
@@ -70,6 +71,13 @@ public final class JavaRuntimeManager {
     }
 
     public static JavaInstallation findCompatible(List<JavaInstallation> installations, int requiredFeature) {
+        JavaInstallation exactMatch = installations.stream()
+                .filter(installation -> installation.getMajorVersion() == requiredFeature)
+                .findFirst()
+                .orElse(null);
+        if (exactMatch != null) {
+            return exactMatch;
+        }
         return installations.stream()
                 .filter(installation -> installation.getMajorVersion() >= requiredFeature)
                 .min(Comparator.comparingInt(JavaInstallation::getMajorVersion))
@@ -119,6 +127,27 @@ public final class JavaRuntimeManager {
         } catch (IOException ignored) {
             // A missing or unreadable optional installation directory does not block other discovery sources.
         }
+    }
+
+    private static void addManagedInstallations(Map<Path, JavaInstallation> found, Path directory) {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        try (var paths = Files.walk(directory, 8)) {
+            paths.filter(path -> path.getFileName() != null
+                            && path.getFileName().toString().equalsIgnoreCase(javaExecutableName()))
+                    .forEach(path -> addExecutable(found, path));
+        } catch (IOException ignored) {
+            // Managed runtimes are an optional discovery source.
+        }
+    }
+
+    static Path managedJavaDirectory() {
+        String configured = System.getProperty("starflux.home");
+        Path home = configured == null || configured.trim().isEmpty()
+                ? Paths.get(System.getProperty("user.home"), ".starflux")
+                : Paths.get(configured);
+        return home.toAbsolutePath().normalize().resolve("java");
     }
 
     private static void addHome(Map<Path, JavaInstallation> found, String home) {
@@ -217,5 +246,9 @@ public final class JavaRuntimeManager {
         public String toString() {
             return "Java " + majorVersion + " (" + version + ") · " + executablePath;
         }
+    }
+
+    public interface ProgressListener {
+        void onProgress(double progress, String message);
     }
 }

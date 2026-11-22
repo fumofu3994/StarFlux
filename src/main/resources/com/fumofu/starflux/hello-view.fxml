@@ -65,12 +65,16 @@
                         <VBox spacing="12.0" styleClass="card">
                             <HBox alignment="CENTER_LEFT" spacing="8.0">
                                 <VBox spacing="3.0">
-                                    <Label text="已安装版本" styleClass="section-title"/>
-                                    <Label text="选择要启动的原版或模组加载器配置。" styleClass="muted-text"/>
+                                    <Label text="游戏实例" styleClass="section-title"/>
+                                    <Label text="每个实例有独立游戏目录，可单独设置 Java、参数和模组。" styleClass="muted-text"/>
                                 </VBox>
                                 <Region HBox.hgrow="ALWAYS"/>
                                 <Label fx:id="installedProfilesLabel" text="0 个版本" styleClass="count-chip"/>
                                 <Button text="刷新" onAction="#onRefreshInstalledProfilesClick" styleClass="button-quiet"/>
+                                <Button fx:id="configureProfileButton" text="Java / 参数…"
+                                        onAction="#onConfigureProfileClick" styleClass="button-secondary"/>
+                                <Button fx:id="renameInstanceButton" text="重命名实例" disable="true"
+                                        onAction="#onRenameInstanceClick" styleClass="button-secondary"/>
                                 <Button fx:id="deleteProfileButton" text="删除" onAction="#onDeleteInstalledProfileClick"
                                         disable="true" styleClass="button-danger"/>
                             </HBox>
@@ -155,20 +159,21 @@
                             <Label text="选择版本与下载源，安装官方游戏文件。" styleClass="muted-text"/>
                             <Label text="Minecraft 版本" styleClass="field-label"/>
                             <ComboBox fx:id="versionComboBox" maxWidth="Infinity" promptText="选择 Minecraft 版本"/>
-                            <CheckBox fx:id="isolateVersionCheckBox" text="创建独立版本实例"
-                                      styleClass="field-label"/>
-                            <Label text="勾选后，该版本会安装到 instances/版本号，存档、模组和设置与其他版本分开。"
+                            <Label text="实例名称" styleClass="field-label"/>
+                            <TextField fx:id="instanceNameField" promptText="例如 生存服 1.21.1"/>
+                            <CheckBox fx:id="isolateVersionCheckBox" text="创建独立实例（推荐）"
+                                      selected="true" styleClass="field-label"/>
+                            <Label text="独立实例将游戏文件、存档、模组和设置放在各自目录；先安装 Minecraft 本体，再为该实例安装模组加载器。"
                                    wrapText="true" styleClass="muted-text"/>
-                            <HBox spacing="10.0">
-                                <Button fx:id="installButton" text="安装所选版本" onAction="#onInstallClick"
-                                        disable="true" styleClass="button-primary"/>
-                                <MenuButton text="模组加载器" styleClass="button-secondary">
-                                    <items>
-                                        <MenuItem text="安装 Fabric / Forge / NeoForge / Quilt…"
-                                                  onAction="#onLoaderMenuClick"/>
-                                    </items>
-                                </MenuButton>
-                            </HBox>
+                            <Button fx:id="installButton" text="安装所选版本" onAction="#onInstallClick"
+                                    disable="true" styleClass="button-primary"/>
+                        </VBox>
+                        <VBox spacing="12.0" styleClass="card">
+                            <Label text="模组加载器" styleClass="section-title"/>
+                            <Label text="先选择上方的 Minecraft 版本，再安装 Fabric、Forge、NeoForge 或 Quilt。"
+                                   wrapText="true" styleClass="muted-text"/>
+                            <Button text="安装模组加载器…" onAction="#onInstallLoaderClick"
+                                    styleClass="button-secondary"/>
                         </VBox>
                         <VBox spacing="10.0" styleClass="card">
                             <Label text="整合包" styleClass="section-title"/>
@@ -192,6 +197,24 @@
                                 <TextField fx:id="memoryField" prefWidth="72.0" promptText="GB"/>
                                 <Label text="GB" styleClass="muted-text"/>
                             </HBox>
+                        </VBox>
+                        <VBox spacing="12.0" styleClass="card">
+                            <Label text="Java 运行环境" styleClass="section-title"/>
+                            <Label text="自动模式会按 Minecraft 版本选择兼容 Java。可发现 JAVA_HOME、PATH 和常见安装目录中的 Java。"
+                                   wrapText="true" styleClass="muted-text"/>
+                            <ComboBox fx:id="javaRuntimeComboBox" maxWidth="Infinity"
+                                      promptText="正在检测已安装的 Java..."/>
+                            <HBox spacing="9.0">
+                                <Button text="重新检测" onAction="#onRefreshJavaClick" styleClass="button-secondary"/>
+                                <Button text="浏览…" onAction="#onBrowseJavaClick" styleClass="button-secondary"/>
+                                <ComboBox fx:id="downloadJavaVersionComboBox" prefWidth="130.0"/>
+                                <Button fx:id="installJavaButton" text="安装 Java…" onAction="#onDownloadJavaClick"
+                                        styleClass="button-secondary"/>
+                            </HBox>
+                            <Label text="Java 会直接安装到启动器管理的 .starflux/java 目录，重启后仍可使用；自动模式会按实例所需版本选择。"
+                                   wrapText="true" styleClass="muted-text"/>
+                            <Label text="全局 JVM 参数（每个版本可单独覆盖）" styleClass="field-label"/>
+                            <TextField fx:id="jvmArgumentsField" promptText="例如 -XX:+UseG1GC"/>
                         </VBox>
                         <VBox spacing="12.0" styleClass="card">
                             <Label text="离线账号" styleClass="section-title"/>

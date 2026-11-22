@@ -2,6 +2,7 @@ module com.fumofu.starflux {
     requires javafx.controls;
     requires javafx.fxml;
     requires com.google.gson;
+    requires java.desktop;
     requires java.prefs;
     requires jdk.management;
 

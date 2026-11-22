@@ -76,6 +76,10 @@ launch4j {
     textVersion.set(project.version.toString())
 }
 
+tasks.named("build") {
+    dependsOn("createExe")
+}
+
 jlink {
     imageZip.set(layout.buildDirectory.file("distributions/StarFluxMCLauncher-${javafx.platform.classifier}.zip"))
     options.set(listOf("--strip-debug", "--compress", "2", "--no-header-files", "--no-man-pages"))
