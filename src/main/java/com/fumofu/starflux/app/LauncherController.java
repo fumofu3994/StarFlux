@@ -1311,7 +1311,7 @@ public class LauncherController {
         }
     }
 
-    private String minecraftVersionForProfile(InstalledProfile profile) {
+    private String minecraftVersionForProfile(InstalledProfile profile) throws IOException {
         Path versionFile = profile.gameDirectory.resolve("versions").resolve(profile.id)
                 .resolve(profile.id + ".json");
         try {
@@ -1320,8 +1320,7 @@ public class LauncherController {
             String parent = getJsonString(version, "inheritsFrom");
             return parent == null ? profile.id : parent;
         } catch (IOException | RuntimeException exception) {
-            statusLabel.setText("读取实例 Minecraft 版本失败：" + messageFor(exception));
-            return profile.id;
+            throw new IOException("无法读取实例的 Minecraft 版本", exception);
         }
     }
 
