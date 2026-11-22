@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.game;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -25,11 +25,19 @@ import java.util.zip.ZipInputStream;
 
 public class MinecraftGameLauncher {
     public Process launch(String versionId, String playerName, Path gameDirectory) throws IOException {
+        return launch(versionId, playerName, gameDirectory, 4);
+    }
+
+    public Process launch(String versionId, String playerName, Path gameDirectory, int maxMemoryGb)
+            throws IOException {
         if (versionId == null || !versionId.matches("[A-Za-z0-9._-]+")) {
             throw new IOException("无效的 Minecraft 版本号：" + versionId);
         }
         if (playerName == null || !playerName.matches("[A-Za-z0-9_]{3,16}")) {
             throw new IOException("离线账号名必须为 3 到 16 位英文字母、数字或下划线");
+        }
+        if (maxMemoryGb < 1 || maxMemoryGb > 64) {
+            throw new IOException("最大内存必须在 1 到 64 GB 之间");
         }
 
         JsonObject version = loadVersion(versionId, gameDirectory, new HashSet<String>(), 0);
@@ -81,6 +89,7 @@ public class MinecraftGameLauncher {
             command.add("-cp");
             command.add(classpathValue);
         }
+        applyMaximumMemory(command, maxMemoryGb);
 
         String mainClass = getString(version, "mainClass", null);
         if (mainClass == null) {
@@ -110,6 +119,22 @@ public class MinecraftGameLauncher {
         } catch (IOException exception) {
             throw new IOException("启动 Minecraft 失败，请确认已安装合适的 Java 版本：" + exception.getMessage(), exception);
         }
+    }
+
+    private static void applyMaximumMemory(List<String> command, int maxMemoryGb) {
+        for (int index = 1; index < command.size(); index++) {
+            String argument = command.get(index);
+            if ("-Xmx".equals(argument)) {
+                command.remove(index);
+                if (index < command.size()) {
+                    command.remove(index);
+                }
+                index--;
+            } else if (argument.startsWith("-Xmx")) {
+                command.remove(index--);
+            }
+        }
+        command.add(1, "-Xmx" + maxMemoryGb + "G");
     }
 
     private JsonObject loadVersion(String versionId, Path gameDirectory, Set<String> visited, int depth)

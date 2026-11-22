@@ -1,4 +1,6 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.account;
+
+import com.fumofu.starflux.config.LauncherData;
 
 import java.util.ArrayList;
 import java.util.Collections;

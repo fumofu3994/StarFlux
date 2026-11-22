@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.game;
 
 public enum LoaderType {
     FABRIC("Fabric"),

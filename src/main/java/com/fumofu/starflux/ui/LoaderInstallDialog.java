@@ -1,4 +1,7 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.ui;
+
+import com.fumofu.starflux.game.LoaderInstaller;
+import com.fumofu.starflux.game.LoaderType;
 
 import javafx.application.Platform;
 import javafx.concurrent.Task;
@@ -57,6 +60,7 @@ public class LoaderInstallDialog {
         ButtonType installButtonType = new ButtonType("安装", ButtonBar.ButtonData.OK_DONE);
         ButtonType cancelButtonType = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().setAll(installButtonType, cancelButtonType);
+        dialog.setResultConverter(buttonType -> null);
         Button installButton = (Button) dialog.getDialogPane().lookupButton(installButtonType);
         installButton.setDisable(true);
 

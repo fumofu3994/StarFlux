@@ -187,7 +187,7 @@ public final class LauncherBootstrap {
         command.add(modulePathArgument.toString());
         command.add("--enable-native-access=javafx.graphics");
         command.add("--module");
-        command.add("com.fumofu.starflux/com.fumofu.starflux.HelloApplication");
+        command.add("com.fumofu.starflux/com.fumofu.starflux.app.HelloApplication");
         log(logFile, "Launching JavaFX application");
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.directory(applicationJar.getParent().toFile());

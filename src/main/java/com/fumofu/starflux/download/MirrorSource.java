@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.download;
 
 import java.io.IOException;
 import java.net.URL;

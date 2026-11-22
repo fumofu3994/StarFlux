@@ -1,5 +1,13 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.app;
 
+import com.fumofu.starflux.account.OfflineAccountStore;
+import com.fumofu.starflux.config.LauncherData;
+import com.fumofu.starflux.download.MinecraftInstaller;
+import com.fumofu.starflux.download.MirrorSource;
+import com.fumofu.starflux.game.LoaderType;
+import com.fumofu.starflux.game.MinecraftGameLauncher;
+import com.fumofu.starflux.multiplayer.TerracottaService;
+import com.fumofu.starflux.ui.LoaderInstallDialog;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
@@ -10,15 +18,18 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Slider;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.StackPane;
 import javafx.stage.DirectoryChooser;
+import com.sun.management.OperatingSystemMXBean;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.FileVisitResult;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -30,6 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import java.util.concurrent.CompletionException;
 
 public class LauncherController {
     @FXML
@@ -41,11 +53,15 @@ public class LauncherController {
     @FXML
     private javafx.scene.layout.VBox settingsPage;
     @FXML
+    private javafx.scene.layout.VBox multiplayerPage;
+    @FXML
     private Button playNavButton;
     @FXML
     private Button downloadNavButton;
     @FXML
     private Button settingsNavButton;
+    @FXML
+    private Button multiplayerNavButton;
     @FXML
     private ComboBox<MirrorSource> mirrorComboBox;
     @FXML
@@ -72,11 +88,38 @@ public class LauncherController {
     private Label gameDirectoryLabel;
     @FXML
     private TextField gameDirectoryField;
+    @FXML
+    private TextField roomCodeField;
+    @FXML
+    private Label roomStateLabel;
+    @FXML
+    private Label roomCodeLabel;
+    @FXML
+    private Label roomMembersLabel;
+    @FXML
+    private Button createRoomButton;
+    @FXML
+    private Button joinRoomButton;
+    @FXML
+    private Button leaveRoomButton;
+    @FXML
+    private Slider memorySlider;
+    @FXML
+    private TextField memoryField;
+    @FXML
+    private Label systemMemoryLabel;
+    @FXML
+    private javafx.scene.control.CheckBox isolateVersionCheckBox;
 
     private final OfflineAccountStore accountStore = new OfflineAccountStore();
     private final MinecraftGameLauncher gameLauncher = new MinecraftGameLauncher();
+    private final TerracottaService terracottaService = new TerracottaService();
     private static final String GAME_DIRECTORY_KEY = "game-directory";
     private Process gameProcess;
+
+    public void close() {
+        terracottaService.close();
+    }
 
     @FXML
     private void initialize() {
@@ -84,6 +127,7 @@ public class LauncherController {
         updateGameDirectoryLabel();
 
         mirrorComboBox.getItems().setAll(MirrorSource.values());
+        initializeMemoryControls();
         String savedMirror = LauncherData.get("download-mirror", MirrorSource.MOJANG.name());
         try {
             mirrorComboBox.getSelectionModel().select(MirrorSource.valueOf(savedMirror));
@@ -123,8 +167,78 @@ public class LauncherController {
         });
         refreshAccounts();
         refreshInstalledProfiles(null);
+        terracottaService.setStateListener(state -> Platform.runLater(() -> updateTerracottaState(state)));
+        terracottaService.setProgressListener((progress, message) -> Platform.runLater(() -> {
+            progressBar.setProgress(progress);
+            if (message != null && !message.isEmpty()) {
+                roomStateLabel.setText(message);
+            }
+        }));
+        terracottaService.startPolling();
         showPlayPage();
         loadVersions(mirrorComboBox.getValue());
+    }
+
+    private void initializeMemoryControls() {
+        long totalMemoryBytes = ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean())
+                .getTotalMemorySize();
+        double totalMemoryGb = totalMemoryBytes / (1024.0 * 1024 * 1024);
+        int maxMemoryGb = Math.max(1, Math.min(64, (int) Math.floor(totalMemoryGb)));
+        systemMemoryLabel.setText(String.format(java.util.Locale.ROOT,
+                "检测到系统内存：%.1f GB", totalMemoryGb));
+        memorySlider.setMin(1);
+        memorySlider.setMax(maxMemoryGb);
+        memorySlider.setMajorTickUnit(Math.max(1, Math.min(8, maxMemoryGb - 1)));
+        memorySlider.setBlockIncrement(1);
+        memorySlider.setMinorTickCount(Math.max(0, (int) memorySlider.getMajorTickUnit() - 1));
+        memorySlider.setSnapToTicks(true);
+
+        int configuredMemory;
+        try {
+            configuredMemory = Integer.parseInt(LauncherData.get("max-memory-gb", "4"));
+        } catch (NumberFormatException exception) {
+            configuredMemory = 4;
+        }
+        configuredMemory = Math.max(1, Math.min(maxMemoryGb, configuredMemory));
+        memorySlider.setValue(configuredMemory);
+        memoryField.setText(Integer.toString(configuredMemory));
+        memoryField.setTextFormatter(new javafx.scene.control.TextFormatter<String>(
+                change -> change.getControlNewText().matches("\\d{0,2}") ? change : null));
+        memorySlider.valueProperty().addListener((_, _, value) -> {
+            int memory = (int) Math.round(value.doubleValue());
+            memoryField.setText(Integer.toString(memory));
+            saveConfig("max-memory-gb", Integer.toString(memory));
+        });
+        memoryField.textProperty().addListener((_, _, value) -> {
+            if (value != null && !value.isEmpty()) {
+                int memory = Integer.parseInt(value);
+                if (memory > maxMemoryGb) {
+                    memorySlider.setValue(maxMemoryGb);
+                    memoryField.setText(Integer.toString(maxMemoryGb));
+                } else if (memory >= 1) {
+                    memorySlider.setValue(memory);
+                }
+            }
+        });
+        memoryField.setOnAction(_ -> commitMemoryField(maxMemoryGb));
+        memoryField.focusedProperty().addListener((_, _, focused) -> {
+            if (!focused) {
+                commitMemoryField(maxMemoryGb);
+            }
+        });
+        saveConfig("max-memory-gb", Integer.toString(configuredMemory));
+    }
+
+    private void commitMemoryField(int maxMemoryGb) {
+        int memory;
+        try {
+            memory = Integer.parseInt(memoryField.getText());
+        } catch (NumberFormatException exception) {
+            memory = (int) Math.round(memorySlider.getValue());
+        }
+        memory = Math.max(1, Math.min(maxMemoryGb, memory));
+        memorySlider.setValue(memory);
+        memoryField.setText(Integer.toString(memory));
     }
 
     @FXML
@@ -145,6 +259,11 @@ public class LauncherController {
         showPage(settingsPage, settingsNavButton);
     }
 
+    @FXML
+    private void showMultiplayerPage() {
+        showPage(multiplayerPage, multiplayerNavButton);
+    }
+
     private void showPage(javafx.scene.layout.VBox page, Button activeButton) {
         playPage.setVisible(page == playPage);
         playPage.setManaged(page == playPage);
@@ -152,15 +271,13 @@ public class LauncherController {
         downloadPage.setManaged(page == downloadPage);
         settingsPage.setVisible(page == settingsPage);
         settingsPage.setManaged(page == settingsPage);
-        playNavButton.setStyle(navStyle(playNavButton == activeButton));
-        downloadNavButton.setStyle(navStyle(downloadNavButton == activeButton));
-        settingsNavButton.setStyle(navStyle(settingsNavButton == activeButton));
-    }
-
-    private static String navStyle(boolean active) {
-        return active
-                ? "-fx-background-color: #29233d; -fx-background-radius: 8; -fx-text-fill: #c4b5fd; -fx-alignment: CENTER_LEFT;"
-                : "-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: #a1a1aa; -fx-alignment: CENTER_LEFT;";
+        multiplayerPage.setVisible(page == multiplayerPage);
+        multiplayerPage.setManaged(page == multiplayerPage);
+        playNavButton.getStyleClass().setAll("nav-button");
+        downloadNavButton.getStyleClass().setAll("nav-button");
+        settingsNavButton.getStyleClass().setAll("nav-button");
+        multiplayerNavButton.getStyleClass().setAll("nav-button");
+        activeButton.getStyleClass().setAll("nav-button", "nav-button-active");
     }
 
     @FXML
@@ -172,7 +289,8 @@ public class LauncherController {
         }
 
         Optional<LoaderType> installed = new LoaderInstallDialog().showAndWait(
-                launchButton.getScene().getWindow(), minecraftVersion.getId(), getGameDirectory());
+                launchButton.getScene().getWindow(), minecraftVersion.getId(),
+                getInstallGameDirectory(minecraftVersion.getId()));
         if (installed.isPresent()) {
             refreshInstalledProfiles(installed.get().name().toLowerCase());
             statusLabel.setText(installed.get() + " 安装完成");
@@ -299,6 +417,71 @@ public class LauncherController {
     }
 
     @FXML
+    private void onCreateRoomClick() {
+        String player = accountComboBox.getValue();
+        if (player == null) {
+            roomStateLabel.setText("请先在设置中添加并选择离线账号。");
+            return;
+        }
+        roomStateLabel.setText("正在启动陶瓦联机并创建房间；首次使用时会自动下载核心...");
+        createRoomButton.setDisable(true);
+        terracottaService.createRoom(player).whenComplete((ignored, error) -> Platform.runLater(() -> {
+            createRoomButton.setDisable(false);
+            progressBar.setProgress(0);
+            if (error != null) {
+                roomStateLabel.setText("创建房间失败：" + messageFor(unwrapCompletionException(error)));
+            } else {
+                roomStateLabel.setText("已请求创建房间。请在 Minecraft 中进入存档并“对局域网开放”。");
+            }
+        }));
+    }
+
+    @FXML
+    private void onJoinRoomClick() {
+        String player = accountComboBox.getValue();
+        String room = roomCodeField.getText() == null ? "" : roomCodeField.getText().trim().toUpperCase();
+        if (player == null) {
+            roomStateLabel.setText("请先在设置中添加并选择离线账号。");
+            return;
+        }
+        if (!room.matches("U/[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}")) {
+            roomStateLabel.setText("房间码格式不正确，例如 U/ABCD-EFGH-JKLM-NPQR。");
+            return;
+        }
+        roomStateLabel.setText("正在启动陶瓦联机并加入房间...");
+        joinRoomButton.setDisable(true);
+        terracottaService.joinRoom(room, player).whenComplete((ignored, error) -> Platform.runLater(() -> {
+            joinRoomButton.setDisable(false);
+            progressBar.setProgress(0);
+            if (error != null) {
+                roomStateLabel.setText("加入房间失败：" + messageFor(unwrapCompletionException(error)));
+            } else {
+                roomStateLabel.setText("已提交加入请求，正在连接房间...");
+            }
+        }));
+    }
+
+    @FXML
+    private void onLeaveRoomClick() {
+        roomStateLabel.setText("正在断开联机...");
+        terracottaService.returnToWaiting().whenComplete((ignored, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                roomStateLabel.setText("断开联机失败：" + messageFor(unwrapCompletionException(error)));
+            } else {
+                roomStateLabel.setText("已断开联机。");
+                roomCodeLabel.setText("等待创建或加入房间");
+                roomMembersLabel.setText("尚无玩家");
+            }
+        }));
+    }
+
+    @FXML
+    private void onLaunchFromMultiplayerClick() {
+        showPlayPage();
+        onLaunchClick();
+    }
+
+    @FXML
     private void onDeleteInstalledProfileClick() {
         InstalledProfile profile = profileListView.getSelectionModel().getSelectedItem();
         if (profile == null) {
@@ -309,17 +492,29 @@ public class LauncherController {
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
         confirmation.setTitle("删除已安装版本");
         confirmation.setHeaderText("确定删除 " + profile.id + "？");
-        confirmation.setContentText("只删除该版本目录；共享库、资源文件、存档和其他版本不会删除。");
+        confirmation.setContentText(profile.isolated
+                ? "将删除整个独立实例目录，包括此实例中的存档、模组和设置；其他版本不受影响。"
+                : "只删除该版本目录；共享库、资源文件、存档和其他版本不会删除。");
         Optional<ButtonType> result = confirmation.showAndWait();
         if (result.isEmpty() || result.get() != ButtonType.OK) {
             return;
         }
 
-        Path versionsDirectory = getGameDirectory().resolve("versions").toAbsolutePath().normalize();
-        Path profileDirectory = versionsDirectory.resolve(profile.id).normalize();
-        if (!versionsDirectory.equals(profileDirectory.getParent())) {
-            statusLabel.setText("无法删除该版本：版本目录无效");
-            return;
+        Path profileDirectory;
+        if (profile.isolated) {
+            Path instancesDirectory = getInstancesDirectory();
+            if (!instancesDirectory.equals(profile.gameDirectory.getParent())) {
+                statusLabel.setText("无法删除该独立实例：实例目录无效");
+                return;
+            }
+            profileDirectory = profile.gameDirectory;
+        } else {
+            Path versionsDirectory = profile.gameDirectory.resolve("versions").toAbsolutePath().normalize();
+            profileDirectory = versionsDirectory.resolve(profile.id).normalize();
+            if (!versionsDirectory.equals(profileDirectory.getParent())) {
+                statusLabel.setText("无法删除该版本：版本目录无效");
+                return;
+            }
         }
         if (!Files.exists(profileDirectory, LinkOption.NOFOLLOW_LINKS)) {
             statusLabel.setText("该版本目录已不存在");
@@ -329,7 +524,9 @@ public class LauncherController {
 
         try {
             deleteProfileDirectory(profileDirectory);
-            statusLabel.setText("已删除版本 " + profile.id);
+            statusLabel.setText(profile.isolated
+                    ? "已删除独立实例 " + profile.id + "（包括该实例内的存档和设置）"
+                    : "已删除版本 " + profile.id);
             refreshInstalledProfiles(null);
         } catch (IOException exception) {
             statusLabel.setText("删除版本失败：" + messageFor(exception));
@@ -362,7 +559,7 @@ public class LauncherController {
 
         MirrorSource selectedMirror = mirrorComboBox.getValue();
         MinecraftInstaller selectedInstaller = new MinecraftInstaller(selectedMirror);
-        Path gameDirectory = getGameDirectory();
+        Path gameDirectory = getInstallGameDirectory(version.getId());
         setBusy(true);
         progressBar.setProgress(-1);
         statusLabel.setText("正在准备安装 " + version.getId() + "...");
@@ -407,7 +604,10 @@ public class LauncherController {
                 statusLabel.setText("所选 Minecraft 版本尚未安装");
                 return;
             }
-            gameProcess = gameLauncher.launch(profile.id, account, getGameDirectory());
+            int maxMemoryGb = (int) Math.round(memorySlider.getMax());
+            commitMemoryField(maxMemoryGb);
+            int maxMemory = (int) Math.round(memorySlider.getValue());
+            gameProcess = gameLauncher.launch(profile.id, account, profile.gameDirectory, maxMemory);
             gameProcess.onExit().thenAccept(process -> Platform.runLater(() -> {
                 if (gameProcess == process) {
                     statusLabel.setText(process.exitValue() == 0
@@ -500,11 +700,39 @@ public class LauncherController {
     private void refreshInstalledProfiles(String preferredType) {
         InstalledProfile oldSelection = profileListView.getSelectionModel().getSelectedItem();
         List<InstalledProfile> profiles = new ArrayList<InstalledProfile>();
-        Path versionsDirectory = getGameDirectory().resolve("versions");
+        Path gameDirectory = getGameDirectory();
+        scanInstalledProfiles(gameDirectory, false, profiles);
+        Path instancesDirectory = getInstancesDirectory();
+        if (Files.isDirectory(instancesDirectory)) {
+            try (Stream<Path> instances = Files.list(instancesDirectory)) {
+                instances.filter(Files::isDirectory)
+                        .forEach(instance -> scanInstalledProfiles(instance, true, profiles));
+            } catch (IOException exception) {
+                statusLabel.setText("读取独立实例失败：" + messageFor(exception));
+            }
+        }
+        profileListView.getItems().setAll(profiles);
+        installedProfilesLabel.setText(profiles.size() + " 个版本");
+        InstalledProfile selection = findProfile(profiles, oldSelection);
+        if (selection == null && preferredType != null) {
+            for (InstalledProfile profile : profiles) {
+                if (profile.id.toLowerCase().contains(preferredType)
+                        || profile.type.toLowerCase().contains(preferredType)) {
+                    selection = profile;
+                    break;
+                }
+            }
+        }
+        if (selection == null && !profiles.isEmpty()) {
+            selection = profiles.get(0);
+        }
+        profileListView.getSelectionModel().select(selection);
+        updateLaunchButton();
+    }
+
+    private void scanInstalledProfiles(Path gameDirectory, boolean isolated, List<InstalledProfile> profiles) {
+        Path versionsDirectory = gameDirectory.resolve("versions");
         if (!Files.isDirectory(versionsDirectory)) {
-            profileListView.getItems().clear();
-            installedProfilesLabel.setText("0 个已安装版本");
-            updateLaunchButton();
             return;
         }
         try (Stream<Path> directories = Files.list(versionsDirectory)) {
@@ -531,41 +759,24 @@ public class LauncherController {
                 }
                 String parent = getJsonString(json, "inheritsFrom");
                 if (parent == null && Files.isRegularFile(directory.resolve(id + ".jar"))) {
-                    profiles.add(new InstalledProfile(id, "原版"));
+                    profiles.add(new InstalledProfile(id, "原版", gameDirectory, isolated));
                 } else if (parent != null && parent.matches("[A-Za-z0-9._-]+")
                         && Files.isRegularFile(versionsDirectory.resolve(parent)
                         .resolve(parent + ".jar"))) {
-                    profiles.add(new InstalledProfile(id, loaderName(id)));
+                    profiles.add(new InstalledProfile(id, loaderName(id), gameDirectory, isolated));
                 }
             }
         } catch (IOException exception) {
             statusLabel.setText("读取已安装版本失败：" + messageFor(exception));
         }
-        profileListView.getItems().setAll(profiles);
-        installedProfilesLabel.setText(profiles.size() + " 个已安装版本");
-        InstalledProfile selection = findProfile(profiles, oldSelection == null ? null : oldSelection.id);
-        if (selection == null && preferredType != null) {
-            for (InstalledProfile profile : profiles) {
-                if (profile.id.toLowerCase().contains(preferredType)
-                        || profile.type.toLowerCase().contains(preferredType)) {
-                    selection = profile;
-                    break;
-                }
-            }
-        }
-        if (selection == null && !profiles.isEmpty()) {
-            selection = profiles.get(0);
-        }
-        profileListView.getSelectionModel().select(selection);
-        updateLaunchButton();
     }
 
-    private static InstalledProfile findProfile(List<InstalledProfile> profiles, String id) {
-        if (id == null) {
+    private static InstalledProfile findProfile(List<InstalledProfile> profiles, InstalledProfile target) {
+        if (target == null) {
             return null;
         }
         for (InstalledProfile profile : profiles) {
-            if (profile.id.equals(id)) {
+            if (profile.id.equals(target.id) && profile.gameDirectory.equals(target.gameDirectory)) {
                 return profile;
             }
         }
@@ -600,15 +811,19 @@ public class LauncherController {
     private static final class InstalledProfile {
         private final String id;
         private final String type;
+        private final Path gameDirectory;
+        private final boolean isolated;
 
-        private InstalledProfile(String id, String type) {
+        private InstalledProfile(String id, String type, Path gameDirectory, boolean isolated) {
             this.id = id;
             this.type = type;
+            this.gameDirectory = gameDirectory;
+            this.isolated = isolated;
         }
 
         @Override
         public String toString() {
-            return id.equals(type) ? id : type + " · " + id;
+            return (isolated ? "独立 · " : "") + (id.equals(type) ? id : type + " · " + id);
         }
     }
 
@@ -620,12 +835,78 @@ public class LauncherController {
         return Paths.get(System.getProperty("user.home"), ".minecraft").toAbsolutePath().normalize();
     }
 
+    private Path getInstancesDirectory() {
+        return getGameDirectory().resolve("instances").toAbsolutePath().normalize();
+    }
+
+    private Path getInstallGameDirectory(String versionId) {
+        if (isolateVersionCheckBox.isSelected()) {
+            return getInstancesDirectory().resolve(versionId).normalize();
+        }
+        return getGameDirectory();
+    }
+
     private void saveConfig(String key, String value) {
         try {
             LauncherData.put(key, value);
         } catch (UncheckedIOException exception) {
             statusLabel.setText("保存启动器配置失败：" + messageFor(exception));
         }
+    }
+
+    private void updateTerracottaState(TerracottaService.RoomState state) {
+        if (roomStateLabel == null) {
+            return;
+        }
+        switch (state.state) {
+            case "waiting":
+                roomStateLabel.setText("陶瓦联机已就绪，创建房间或输入邀请码加入。");
+                roomCodeLabel.setText("等待创建或加入房间");
+                roomMembersLabel.setText("尚无玩家");
+                break;
+            case "host-scanning":
+                roomStateLabel.setText("正在扫描本机 Minecraft 局域网房间。请进入世界并点击“对局域网开放”。");
+                break;
+            case "host-starting":
+                roomStateLabel.setText("已发现本机世界，正在建立联机网络...");
+                if (!state.room.isEmpty()) {
+                    roomCodeLabel.setText(state.room);
+                }
+                break;
+            case "host-ok":
+                roomStateLabel.setText("房间已创建，分享邀请码给朋友。");
+                roomCodeLabel.setText(state.room);
+                roomMembersLabel.setText(state.profiles.isEmpty()
+                        ? "等待玩家加入" : String.join("  ·  ", state.profiles));
+                break;
+            case "guest-connecting":
+            case "guest-starting":
+                roomStateLabel.setText("正在连接房间" + (state.room.isEmpty() ? "..." : " " + state.room + "…"));
+                if (!state.room.isEmpty()) {
+                    roomCodeLabel.setText(state.room);
+                }
+                break;
+            case "guest-ok":
+                roomStateLabel.setText("已成功加入联机网络。启动游戏后，在多人游戏列表中加入“陶瓦联机大厅”。");
+                roomCodeLabel.setText("备用地址  " + state.url);
+                roomMembersLabel.setText(state.profiles.isEmpty()
+                        ? "已连接" : String.join("  ·  ", state.profiles));
+                break;
+            case "exception":
+                roomStateLabel.setText("联机连接异常：" + state.message + "。可尝试断开后重新加入。");
+                break;
+            case "unavailable":
+                roomStateLabel.setText("陶瓦联机状态暂不可用：" + state.message);
+                break;
+            default:
+                roomStateLabel.setText("陶瓦联机状态：" + state.state);
+                break;
+        }
+        leaveRoomButton.setDisable("waiting".equals(state.state) || "unavailable".equals(state.state));
+    }
+
+    private static Throwable unwrapCompletionException(Throwable error) {
+        return error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
     }
 
     private void updateGameDirectoryLabel() {

@@ -3,8 +3,10 @@ module com.fumofu.starflux {
     requires javafx.fxml;
     requires com.google.gson;
     requires java.prefs;
+    requires jdk.management;
 
 
-    opens com.fumofu.starflux to javafx.fxml;
+    opens com.fumofu.starflux.app to javafx.fxml, javafx.graphics;
+    exports com.fumofu.starflux.app;
     exports com.fumofu.starflux;
 }

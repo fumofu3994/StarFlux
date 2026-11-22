@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.app;
 
 import javafx.application.Application;
 

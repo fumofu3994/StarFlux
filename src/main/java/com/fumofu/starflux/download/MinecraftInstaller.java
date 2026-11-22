@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.download;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;

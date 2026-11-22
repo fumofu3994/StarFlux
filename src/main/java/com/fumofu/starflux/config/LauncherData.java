@@ -1,4 +1,4 @@
-package com.fumofu.starflux;
+package com.fumofu.starflux.config;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,7 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Properties;
 import java.util.prefs.Preferences;
 
-final class LauncherData {
+public final class LauncherData {
     private static final Path DIRECTORY = resolveDirectory();
     private static final Path CONFIG_FILE = DIRECTORY.resolve("config.properties");
     private static final Properties PROPERTIES = loadProperties();
@@ -21,11 +21,11 @@ final class LauncherData {
     private LauncherData() {
     }
 
-    static synchronized String get(String key, String defaultValue) {
+    public static synchronized String get(String key, String defaultValue) {
         return PROPERTIES.getProperty(key, defaultValue);
     }
 
-    static synchronized void put(String key, String value) {
+    public static synchronized void put(String key, String value) {
         PROPERTIES.setProperty(key, value);
         save();
     }
@@ -57,13 +57,11 @@ final class LauncherData {
     }
 
     private static void migrateLegacyPreferences(Properties properties) {
-        Preferences launcherPreferences = Preferences.userNodeForPackage(LauncherController.class);
-        copyPreference(properties, launcherPreferences, "download-mirror");
-        copyPreference(properties, launcherPreferences, "game-directory");
-
-        Preferences accountPreferences = Preferences.userNodeForPackage(OfflineAccountStore.class);
-        copyPreference(properties, accountPreferences, "offline-accounts");
-        copyPreference(properties, accountPreferences, "selected-offline-account");
+        Preferences legacyPreferences = Preferences.userRoot().node("com/fumofu/starflux");
+        copyPreference(properties, legacyPreferences, "download-mirror");
+        copyPreference(properties, legacyPreferences, "game-directory");
+        copyPreference(properties, legacyPreferences, "offline-accounts");
+        copyPreference(properties, legacyPreferences, "selected-offline-account");
     }
 
     private static void copyPreference(Properties properties, Preferences preferences, String key) {
