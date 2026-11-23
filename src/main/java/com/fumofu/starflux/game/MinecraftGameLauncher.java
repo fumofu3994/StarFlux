@@ -1,5 +1,6 @@
 package com.fumofu.starflux.game;
 
+import com.fumofu.starflux.account.MinecraftSession;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -28,6 +29,17 @@ public class MinecraftGameLauncher {
 
     public Process launch(String versionId, String playerName, Path gameDirectory, int maxMemoryGb,
                           Path javaExecutable, String customJvmArguments) throws IOException {
+        String offlineUuid = UUID.nameUUIDFromBytes(
+                ("OfflinePlayer:" + playerName).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .toString().replace("-", "");
+        return launch(versionId, new MinecraftSession(playerName, offlineUuid, "0",
+                        "legacy", "0", "0", "{}"),
+                gameDirectory, maxMemoryGb, javaExecutable, customJvmArguments);
+    }
+
+    public Process launch(String versionId, MinecraftSession session, Path gameDirectory, int maxMemoryGb,
+                          Path javaExecutable, String customJvmArguments) throws IOException {
+        String playerName = session.getPlayerName();
         if (versionId == null || !versionId.matches("[A-Za-z0-9._-]+")) {
             throw new IOException("无效的 Minecraft 版本号：" + versionId);
         }
@@ -56,15 +68,14 @@ public class MinecraftGameLauncher {
         JsonObject assetIndex = version.getAsJsonObject("assetIndex");
         placeholders.put("assets_index_name", assetIndex == null
                 ? getString(version, "assets", versionId) : getString(assetIndex, "id", versionId));
-        placeholders.put("auth_uuid", UUID.nameUUIDFromBytes(
-                        ("OfflinePlayer:" + playerName).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                .toString().replace("-", ""));
-        placeholders.put("auth_access_token", "0");
-        placeholders.put("auth_session", "0");
-        placeholders.put("auth_xuid", "0");
-        placeholders.put("clientid", "0");
-        placeholders.put("user_properties", "{}");
-        placeholders.put("user_type", "legacy");
+        placeholders.put("auth_uuid", session.getUuid());
+        placeholders.put("auth_access_token", session.getAccessToken());
+        placeholders.put("auth_session", session.getAccessToken().equals("0")
+                ? "0" : "token:" + session.getAccessToken() + ":" + session.getUuid());
+        placeholders.put("auth_xuid", session.getXuid());
+        placeholders.put("clientid", session.getClientId());
+        placeholders.put("user_properties", session.getUserProperties());
+        placeholders.put("user_type", session.getUserType());
         placeholders.put("version_type", getString(version, "type", "release"));
         placeholders.put("launcher_name", "StarFlux MC Launcher");
         placeholders.put("launcher_version", "1.0");

@@ -65,6 +65,46 @@
     -fx-border-color: #242b3a transparent transparent transparent;
 }
 
+.account-entry {
+    -fx-background-color: #171c28;
+    -fx-background-radius: 11px;
+    -fx-border-color: #2a3241;
+    -fx-border-radius: 11px;
+    -fx-padding: 9 10;
+    -fx-cursor: hand;
+    -fx-alignment: center-left;
+}
+
+.account-entry:hover {
+    -fx-background-color: #202638;
+    -fx-border-color: #494064;
+}
+
+.account-avatar {
+    -fx-background-color: #2b2540;
+    -fx-background-radius: 18px;
+}
+
+.account-avatar-text {
+    -fx-text-fill: #cbbaff;
+    -fx-font-size: 17px;
+}
+
+.account-entry-name {
+    -fx-text-fill: #e7eaf2;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.account-entry-type, .account-entry-arrow {
+    -fx-text-fill: #8d98ac;
+    -fx-font-size: 10px;
+}
+
+.account-entry-arrow {
+    -fx-font-size: 18px;
+}
+
 .sidebar-footer-title {
     -fx-text-fill: #d3d8e4;
     -fx-font-size: 11px;

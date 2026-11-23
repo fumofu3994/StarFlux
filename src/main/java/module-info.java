@@ -5,6 +5,7 @@ module com.fumofu.starflux {
     requires java.desktop;
     requires java.prefs;
     requires jdk.management;
+    requires java.net.http;
 
 
     opens com.fumofu.starflux.app to javafx.fxml, javafx.graphics;

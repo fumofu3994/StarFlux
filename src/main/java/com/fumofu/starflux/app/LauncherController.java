@@ -1,6 +1,9 @@
 package com.fumofu.starflux.app;
 
-import com.fumofu.starflux.account.OfflineAccountStore;
+import com.fumofu.starflux.account.AccountAuthenticator;
+import com.fumofu.starflux.account.AccountStore;
+import com.fumofu.starflux.account.AccountType;
+import com.fumofu.starflux.account.MinecraftSession;
 import com.fumofu.starflux.config.LauncherData;
 import com.fumofu.starflux.download.MinecraftInstaller;
 import com.fumofu.starflux.download.MirrorSource;
@@ -22,6 +25,7 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.Slider;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.TextField;
@@ -65,6 +69,8 @@ public class LauncherController {
     @FXML
     private javafx.scene.layout.VBox multiplayerPage;
     @FXML
+    private javafx.scene.layout.VBox accountsPage;
+    @FXML
     private Button playNavButton;
     @FXML
     private Button downloadNavButton;
@@ -77,13 +83,21 @@ public class LauncherController {
     @FXML
     private ComboBox<MinecraftInstaller.VersionEntry> versionComboBox;
     @FXML
-    private ComboBox<String> accountComboBox;
+    private ComboBox<AccountStore.Account> accountComboBox;
     @FXML
     private ListView<InstalledProfile> profileListView;
     @FXML
     private Label installedProfilesLabel;
     @FXML
-    private ListView<String> accountListView;
+    private ListView<AccountStore.Account> accountListView;
+    @FXML
+    private Label accountEntryNameLabel;
+    @FXML
+    private Label accountEntryTypeLabel;
+    @FXML
+    private TextField microsoftClientIdField;
+    @FXML
+    private Button microsoftLoginButton;
     @FXML
     private Button installButton;
     @FXML
@@ -135,7 +149,8 @@ public class LauncherController {
     @FXML
     private TextField instanceNameField;
 
-    private final OfflineAccountStore accountStore = new OfflineAccountStore();
+    private final AccountStore accountStore = new AccountStore();
+    private final AccountAuthenticator accountAuthenticator = new AccountAuthenticator();
     private final MinecraftGameLauncher gameLauncher = new MinecraftGameLauncher();
     private final TerracottaService terracottaService = new TerracottaService();
     private final Map<Path, JavaRuntimeManager.JavaInstallation> javaInstallations = new LinkedHashMap<>();
@@ -223,7 +238,7 @@ public class LauncherController {
         accountComboBox.valueProperty().addListener((_, _, newValue) -> {
             if (newValue != null) {
                 try {
-                    accountStore.selectAccount(newValue);
+                    accountStore.select(newValue.getId());
                 } catch (UncheckedIOException exception) {
                     statusLabel.setText("保存账号设置失败：" + messageFor(exception));
                 }
@@ -231,8 +246,10 @@ public class LauncherController {
             if (accountListView != null) {
                 refreshAccountList();
             }
+            updateAccountEntry();
             updateLaunchButton();
         });
+        microsoftClientIdField.setText(LauncherData.get("microsoft-client-id", ""));
         gameDirectoryField.textProperty().addListener((_, _, newValue) -> {
             if (newValue != null && !newValue.trim().isEmpty()) {
                 saveConfig(GAME_DIRECTORY_KEY, newValue.trim());
@@ -586,6 +603,11 @@ public class LauncherController {
         showPage(multiplayerPage, multiplayerNavButton);
     }
 
+    @FXML
+    private void showAccountsPage() {
+        showPage(accountsPage, null);
+    }
+
     private void showPage(javafx.scene.layout.VBox page, Button activeButton) {
         playPage.setVisible(page == playPage);
         playPage.setManaged(page == playPage);
@@ -599,7 +621,11 @@ public class LauncherController {
         downloadNavButton.getStyleClass().setAll("nav-button");
         settingsNavButton.getStyleClass().setAll("nav-button");
         multiplayerNavButton.getStyleClass().setAll("nav-button");
-        activeButton.getStyleClass().setAll("nav-button", "nav-button-active");
+        accountsPage.setVisible(page == accountsPage);
+        accountsPage.setManaged(page == accountsPage);
+        if (activeButton != null) {
+            activeButton.getStyleClass().setAll("nav-button", "nav-button-active");
+        }
     }
 
     @FXML
@@ -709,7 +735,9 @@ public class LauncherController {
             return;
         }
         try {
-            accountStore.addAccount(name);
+            String id = java.util.UUID.randomUUID().toString();
+            accountStore.add(new AccountStore.Account(id, name, AccountType.OFFLINE, ""),
+                    offlineSession(name));
             refreshAccounts();
             statusLabel.setText("已添加离线账号 " + name);
         } catch (UncheckedIOException exception) {
@@ -718,25 +746,141 @@ public class LauncherController {
     }
 
     @FXML
+    private void onMicrosoftLoginClick() {
+        String clientId = microsoftClientIdField.getText() == null ? "" : microsoftClientIdField.getText().trim();
+        if (clientId.isEmpty()) {
+            showError("需要 Microsoft OAuth 客户端 ID",
+                    "请填写已注册为公共客户端并启用设备代码流的 Microsoft OAuth 客户端 ID。");
+            microsoftClientIdField.requestFocus();
+            return;
+        }
+        try {
+            saveConfig("microsoft-client-id", clientId);
+        } catch (UncheckedIOException exception) {
+            showError("保存设置失败", messageFor(exception));
+            return;
+        }
+        authenticateAccount(AccountType.MICROSOFT, "", "", null, clientId);
+    }
+
+    @FXML
+    private void onYggdrasilLoginClick() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("添加第三方账号");
+        dialog.setHeaderText("登录 Authlib-Injector 兼容的认证服务器");
+        ButtonType loginButton = new ButtonType("登录", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().setAll(loginButton, ButtonType.CANCEL);
+        TextField serverField = new TextField();
+        serverField.setPromptText("https://auth.example.com/");
+        TextField usernameField = new TextField();
+        usernameField.setPromptText("邮箱或账号");
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("密码");
+        GridPane fields = new GridPane();
+        fields.setHgap(10);
+        fields.setVgap(10);
+        fields.setPadding(new Insets(10, 0, 0, 0));
+        fields.add(new Label("认证服务器"), 0, 0);
+        fields.add(serverField, 1, 0);
+        fields.add(new Label("账号"), 0, 1);
+        fields.add(usernameField, 1, 1);
+        fields.add(new Label("密码"), 0, 2);
+        fields.add(passwordField, 1, 2);
+        dialog.getDialogPane().setContent(fields);
+        Optional<ButtonType> result = dialog.showAndWait();
+        if (result.isEmpty() || result.get() != loginButton) {
+            passwordField.clear();
+            return;
+        }
+        String server = serverField.getText() == null ? "" : serverField.getText().trim();
+        String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
+        char[] password = passwordField.getText().toCharArray();
+        passwordField.clear();
+        if (server.isEmpty() || username.isEmpty() || password.length == 0) {
+            java.util.Arrays.fill(password, '\0');
+            showError("信息不完整", "请填写认证服务器地址、账号和密码。");
+            return;
+        }
+        authenticateAccount(AccountType.YGGDRASIL, server, username, password, "");
+    }
+
+    private void authenticateAccount(AccountType type, String server, String username,
+                                     char[] password, String clientId) {
+        microsoftLoginButton.setDisable(true);
+        statusLabel.setText(type == AccountType.MICROSOFT
+                ? "正在等待 Microsoft 账号验证..." : "正在登录第三方认证服务器...");
+        progressBar.setProgress(-1);
+        Task<MinecraftSession> task = new Task<>() {
+            @Override
+            protected MinecraftSession call() throws Exception {
+                try {
+                    if (type == AccountType.MICROSOFT) {
+                        return accountAuthenticator.authenticateMicrosoft(clientId, deviceCode ->
+                                Platform.runLater(() -> {
+                                    statusLabel.setText("请在浏览器中确认 Microsoft 登录验证码");
+                                    boolean opened = AccountAuthenticator.openBrowser(deviceCode.verificationUri());
+                                    Alert instructions = new Alert(Alert.AlertType.INFORMATION);
+                                    instructions.setTitle("Microsoft 正版账号登录");
+                                    instructions.setHeaderText("请完成 Microsoft 账号验证");
+                                    instructions.setContentText((opened
+                                            ? "已打开浏览器。若未打开，请访问：\n" + deviceCode.verificationUri()
+                                            : "请访问以下页面：\n" + deviceCode.verificationUri())
+                                            + "\n\n输入验证码： " + deviceCode.userCode());
+                                    instructions.showAndWait();
+                                }));
+                    }
+                    return accountAuthenticator.authenticateYggdrasil(server, username, password);
+                } finally {
+                    if (password != null) {
+                        java.util.Arrays.fill(password, '\0');
+                    }
+                }
+            }
+        };
+        task.setOnSucceeded(_ -> {
+            MinecraftSession session = task.getValue();
+            try {
+                String accountId = java.util.UUID.randomUUID().toString();
+                accountStore.add(new AccountStore.Account(accountId, session.getPlayerName(), type, server), session);
+                refreshAccounts();
+                statusLabel.setText("已登录 " + type.getDisplayName() + "账号 " + session.getPlayerName());
+            } catch (UncheckedIOException exception) {
+                statusLabel.setText("保存账号失败：" + messageFor(exception));
+            } finally {
+                microsoftLoginButton.setDisable(false);
+                progressBar.setProgress(0);
+            }
+        });
+        task.setOnFailed(_ -> {
+            statusLabel.setText("登录失败：" + messageFor(task.getException()));
+            microsoftLoginButton.setDisable(false);
+            progressBar.setProgress(0);
+        });
+        Thread loginThread = new Thread(task, "account-login-" + type.name().toLowerCase());
+        loginThread.setDaemon(true);
+        loginThread.start();
+    }
+
+    @FXML
     private void onManageAccountsClick() {
-        String selected = accountListView.getSelectionModel().getSelectedItem();
+        AccountStore.Account selected = accountListView.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            statusLabel.setText("请先在设置页选择要删除的账号");
+            statusLabel.setText("请先选择要移除的账号");
             return;
         }
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
-        confirmation.setTitle("删除离线账号");
-        confirmation.setHeaderText("确定删除账号 " + selected + "？");
-        confirmation.setContentText("此操作只会从启动器中移除该账号。");
+        confirmation.setTitle("移除账号");
+        confirmation.setHeaderText("确定移除账号 " + selected.getName() + "？");
+        confirmation.setContentText("此操作只会从启动器中移除该账号及本次运行中的登录状态。");
         Optional<javafx.scene.control.ButtonType> result = confirmation.showAndWait();
         if (result.isEmpty() || result.get() != javafx.scene.control.ButtonType.OK) {
             return;
         }
         try {
-            accountStore.removeAccount(selected);
+            accountStore.remove(selected.getId());
             refreshAccounts();
             refreshAccountList();
-            statusLabel.setText("已删除离线账号 " + selected);
+            statusLabel.setText("已移除账号 " + selected.getName());
         } catch (UncheckedIOException exception) {
             statusLabel.setText("删除账号失败：" + messageFor(exception));
         }
@@ -749,9 +893,9 @@ public class LauncherController {
 
     @FXML
     private void onCreateRoomClick() {
-        String player = accountComboBox.getValue();
+        String player = selectedPlayerName();
         if (player == null) {
-            roomStateLabel.setText("请先在设置中添加并选择离线账号。");
+            roomStateLabel.setText("请先在左下角添加并选择账号。");
             return;
         }
         statusLabel.setText("正在启动陶瓦联机并创建房间...");
@@ -769,10 +913,10 @@ public class LauncherController {
 
     @FXML
     private void onJoinRoomClick() {
-        String player = accountComboBox.getValue();
+        String player = selectedPlayerName();
         String room = roomCodeField.getText() == null ? "" : roomCodeField.getText().trim().toUpperCase();
         if (player == null) {
-            roomStateLabel.setText("请先在设置中添加并选择离线账号。");
+            roomStateLabel.setText("请先在左下角添加并选择账号。");
             return;
         }
         if (!room.matches("U/[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}-[0-9A-HJ-NP-Z]{4}")) {
@@ -866,15 +1010,15 @@ public class LauncherController {
 
     @FXML
     private void onAccountSelectedClick() {
-        String selected = accountListView.getSelectionModel().getSelectedItem();
+        AccountStore.Account selected = accountListView.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            statusLabel.setText("请先选择一个离线账号");
+            statusLabel.setText("请先选择一个账号");
             return;
         }
         try {
-            accountStore.selectAccount(selected);
+            accountStore.select(selected.getId());
             refreshAccounts();
-            statusLabel.setText("已将 " + selected + " 设为当前账号");
+            statusLabel.setText("已将 " + selected.getName() + " 设为当前账号");
         } catch (UncheckedIOException exception) {
             statusLabel.setText("保存账号设置失败：" + messageFor(exception));
         }
@@ -936,9 +1080,17 @@ public class LauncherController {
 
     @FXML
     private void onLaunchClick() {
-        String account = accountComboBox.getValue();
+        AccountStore.Account account = accountComboBox.getValue();
         if (account == null) {
-            statusLabel.setText("请先在设置中添加并选择离线账号");
+            statusLabel.setText("请先添加并选择账号");
+            return;
+        }
+        MinecraftSession session = accountStore.getSession(account.getId());
+        if (account.getType() == AccountType.OFFLINE) {
+            session = offlineSession(account.getName());
+        } else if (session == null) {
+            statusLabel.setText("账号登录状态已失效，请重新登录 " + account.getName());
+            showAccountsPage();
             return;
         }
         try {
@@ -985,7 +1137,7 @@ public class LauncherController {
             }
             String arguments = LauncherData.get(prefix + "jvm-arguments",
                     LauncherData.get("jvm-arguments", ""));
-            gameProcess = gameLauncher.launch(profile.id, account, profile.gameDirectory, maxMemory,
+            gameProcess = gameLauncher.launch(profile.id, session, profile.gameDirectory, maxMemory,
                     selectedJava.getExecutablePath(), arguments);
             gameProcess.onExit().thenAccept(process -> Platform.runLater(() -> {
                 if (gameProcess == process) {
@@ -996,7 +1148,7 @@ public class LauncherController {
                     updateInstalledProfileActions();
                 }
             }));
-            statusLabel.setText("Minecraft " + profile.id + " 已启动（离线账号：" + account + "）");
+            statusLabel.setText("Minecraft " + profile.id + " 已启动（账号：" + account.getName() + "）");
             updateLaunchButton();
             updateInstalledProfileActions();
         } catch (Exception exception) {
@@ -1021,9 +1173,12 @@ public class LauncherController {
     }
 
     private void refreshAccounts() {
-        String selected = accountStore.getSelectedAccount();
-        accountComboBox.getItems().setAll(accountStore.getAccounts());
-        if (selected.isEmpty() || !accountComboBox.getItems().contains(selected)) {
+        String selectedId = accountStore.getSelectedId();
+        List<AccountStore.Account> accounts = accountStore.getAccounts();
+        accountComboBox.getItems().setAll(accounts);
+        AccountStore.Account selected = accounts.stream()
+                .filter(account -> account.getId().equals(selectedId)).findFirst().orElse(null);
+        if (selected == null) {
             if (!accountComboBox.getItems().isEmpty()) {
                 accountComboBox.getSelectionModel().selectFirst();
             } else {
@@ -1033,24 +1188,54 @@ public class LauncherController {
             accountComboBox.getSelectionModel().select(selected);
         }
         refreshAccountList();
+        updateAccountEntry();
         updateLaunchButton();
     }
 
     private void refreshAccountList() {
-        String selected = accountStore.getSelectedAccount();
-        accountListView.getItems().setAll(accountStore.getAccounts());
-        if (selected != null && !selected.isEmpty() && accountListView.getItems().contains(selected)) {
+        String selectedId = accountStore.getSelectedId();
+        List<AccountStore.Account> accounts = accountStore.getAccounts();
+        accountListView.getItems().setAll(accounts);
+        AccountStore.Account selected = accounts.stream()
+                .filter(account -> account.getId().equals(selectedId)).findFirst().orElse(null);
+        if (selected != null) {
             accountListView.getSelectionModel().select(selected);
         } else {
             accountListView.getSelectionModel().clearSelection();
         }
     }
 
+    private void updateAccountEntry() {
+        if (accountEntryNameLabel == null) {
+            return;
+        }
+        AccountStore.Account account = accountComboBox.getValue();
+        if (account == null) {
+            accountEntryNameLabel.setText("未登录");
+            accountEntryTypeLabel.setText("点击添加账号");
+        } else {
+            accountEntryNameLabel.setText(account.getName());
+            accountEntryTypeLabel.setText(account.getType().getDisplayName());
+        }
+    }
+
+    private String selectedPlayerName() {
+        AccountStore.Account account = accountComboBox.getValue();
+        return account == null ? null : account.getName();
+    }
+
+    private static MinecraftSession offlineSession(String playerName) {
+        String uuid = java.util.UUID.nameUUIDFromBytes(
+                ("OfflinePlayer:" + playerName).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .toString().replace("-", "");
+        return new MinecraftSession(playerName, uuid, "0", "legacy", "0", "0", "{}");
+    }
+
     private void updateLaunchButton() {
         if (launchButton == null) {
             return;
         }
-        String account = accountComboBox.getValue();
+        AccountStore.Account account = accountComboBox.getValue();
         InstalledProfile profile = profileListView.getSelectionModel().getSelectedItem();
         boolean installed = profile != null && account != null;
         launchButton.setDisable(!installed || gameProcess != null);

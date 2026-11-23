@@ -29,6 +29,21 @@
                         onAction="#showSettingsPage" styleClass="nav-button"/>
             </VBox>
             <Region VBox.vgrow="ALWAYS"/>
+            <Button fx:id="accountEntryButton" maxWidth="Infinity" onAction="#showAccountsPage"
+                    styleClass="account-entry">
+                <graphic>
+                    <HBox alignment="CENTER_LEFT" spacing="10.0">
+                        <StackPane prefWidth="34.0" prefHeight="34.0" styleClass="account-avatar">
+                            <Label text="✦" styleClass="account-avatar-text"/>
+                        </StackPane>
+                        <VBox spacing="3.0" HBox.hgrow="ALWAYS">
+                            <Label fx:id="accountEntryNameLabel" text="未登录" styleClass="account-entry-name"/>
+                            <Label fx:id="accountEntryTypeLabel" text="账号管理" styleClass="account-entry-type"/>
+                        </VBox>
+                        <Label text="›" styleClass="account-entry-arrow"/>
+                    </HBox>
+                </graphic>
+            </Button>
             <VBox spacing="5.0" styleClass="sidebar-footer">
                 <Label text="StarFlux MC Launcher" styleClass="sidebar-footer-title"/>
                 <Label text="游戏，从此刻开始。" styleClass="sidebar-footer-caption"/>
@@ -87,7 +102,7 @@
                             <HBox alignment="CENTER_LEFT" spacing="12.0">
                                 <Label text="游戏昵称" styleClass="field-label"/>
                                 <ComboBox fx:id="accountComboBox" HBox.hgrow="ALWAYS"
-                                          promptText="请先在设置中添加离线账号"/>
+                                          promptText="请先添加并登录账号"/>
                             </HBox>
                         </VBox>
                         <HBox spacing="12.0">
@@ -216,19 +231,11 @@
                             <Label text="全局 JVM 参数（每个版本可单独覆盖）" styleClass="field-label"/>
                             <TextField fx:id="jvmArgumentsField" promptText="例如 -XX:+UseG1GC"/>
                         </VBox>
-                        <VBox spacing="12.0" styleClass="card">
-                            <Label text="离线账号" styleClass="section-title"/>
-                            <Label text="离线昵称无法登录需要正版验证的服务器。" wrapText="true" styleClass="muted-text"/>
-                            <ListView fx:id="accountListView" prefHeight="130.0">
-                                <placeholder>
-                                    <Label text="还没有离线账号" styleClass="muted-text"/>
-                                </placeholder>
-                            </ListView>
-                            <HBox spacing="9.0">
-                                <Button text="添加账号" onAction="#onAddAccountClick" styleClass="button-secondary"/>
-                                <Button text="设为当前" onAction="#onAccountSelectedClick" styleClass="button-secondary"/>
-                                <Button text="删除账号" onAction="#onManageAccountsClick" styleClass="button-danger"/>
-                            </HBox>
+                        <VBox spacing="10.0" styleClass="card">
+                            <Label text="账号管理" styleClass="section-title"/>
+                            <Label text="支持离线昵称、Microsoft 正版账号和 Authlib-Injector 第三方认证。"
+                                   wrapText="true" styleClass="muted-text"/>
+                            <Button text="打开账号管理" onAction="#showAccountsPage" styleClass="button-secondary"/>
                         </VBox>
                         <VBox spacing="12.0" styleClass="card">
                             <Label text="下载源" styleClass="section-title"/>
@@ -242,6 +249,52 @@
                                 <TextField fx:id="gameDirectoryField" HBox.hgrow="ALWAYS"/>
                                 <Button text="浏览…" onAction="#onChooseGameDirectoryClick" styleClass="button-secondary"/>
                             </HBox>
+                        </VBox>
+                    </VBox>
+
+                    <VBox fx:id="accountsPage" spacing="20.0" visible="false" managed="false" styleClass="page">
+                        <VBox spacing="5.0">
+                            <Label text="账号管理" styleClass="page-title"/>
+                            <Label text="管理当前游戏身份。登录凭据不会保存在启动器配置中。" styleClass="page-subtitle"/>
+                        </VBox>
+                        <VBox spacing="12.0" styleClass="card">
+                            <HBox alignment="CENTER_LEFT" spacing="8.0">
+                                <VBox spacing="4.0">
+                                    <Label text="我的账号" styleClass="section-title"/>
+                                    <Label text="选择账号作为启动游戏和联机时使用的身份。" styleClass="muted-text"/>
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS"/>
+                                <Button text="设为当前" onAction="#onAccountSelectedClick" styleClass="button-secondary"/>
+                                <Button text="移除账号" onAction="#onManageAccountsClick" styleClass="button-danger"/>
+                            </HBox>
+                            <ListView fx:id="accountListView" prefHeight="240.0" styleClass="profile-list">
+                                <placeholder>
+                                    <Label text="还没有账号，请使用下方方式登录。" styleClass="muted-text"/>
+                                </placeholder>
+                            </ListView>
+                        </VBox>
+                        <HBox spacing="12.0">
+                            <VBox spacing="12.0" HBox.hgrow="ALWAYS" styleClass="card">
+                                <Label text="离线账号" styleClass="section-title"/>
+                                <Label text="用于单人游戏或允许离线玩家的服务器；昵称不能登录正版验证服务器。"
+                                       wrapText="true" styleClass="muted-text"/>
+                                <Button text="添加离线账号" onAction="#onAddAccountClick" styleClass="button-secondary"/>
+                            </VBox>
+                            <VBox spacing="12.0" HBox.hgrow="ALWAYS" styleClass="card">
+                                <Label text="Microsoft 正版账号" styleClass="section-title"/>
+                                <Label text="使用 Microsoft 设备代码登录，并验证 Minecraft: Java Edition 授权。"
+                                       wrapText="true" styleClass="muted-text"/>
+                                <TextField fx:id="microsoftClientIdField" promptText="OAuth 客户端 ID（首次使用需配置）"/>
+                                <Button fx:id="microsoftLoginButton" text="使用 Microsoft 登录"
+                                        onAction="#onMicrosoftLoginClick" styleClass="button-primary"/>
+                            </VBox>
+                        </HBox>
+                        <VBox spacing="12.0" styleClass="card">
+                            <Label text="第三方认证服务器" styleClass="section-title"/>
+                            <Label text="兼容 Authlib-Injector 的 Yggdrasil 认证服务器。账号密码仅发送至你指定的 HTTPS 服务器，登录后不会保存。"
+                                   wrapText="true" styleClass="muted-text"/>
+                            <Button text="添加第三方账号" onAction="#onYggdrasilLoginClick"
+                                    styleClass="button-secondary"/>
                         </VBox>
                     </VBox>
                 </StackPane>
